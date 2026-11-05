@@ -36,17 +36,6 @@
   </g>
 </svg>
 </header>
-<section class="card account-card" aria-labelledby="account-title">
-<h2 id="account-title">☁️ 我的云端小本本</h2>
-<p id="account-name">登录后，在不同设备继续记录</p>
-<div class="record-actions">
-<button id="login" class="primary">用 GitHub 登录</button>
-<button id="logout" hidden>退出登录</button>
-<button id="sync-retry">重新同步</button>
-<button id="migrate-local" hidden>导入本机旧记录到账号</button>
-</div>
-<p id="sync-state" role="status">正在连接账号服务…</p>
-</section>
 <div id="journal" hidden>
 <section class="card" aria-labelledby="record-title">
 <h2 id="record-title"><span class="section-icon peach" aria-hidden="true">☀️</span>今天的小记录</h2>
@@ -86,6 +75,17 @@
 <p role="status" id="backup-status"></p>
 </section>
 </div>
+<section class="card account-card" aria-labelledby="account-title">
+<h2 id="account-title">☁️ 我的云端小本本</h2>
+<p id="account-name">登录后，在不同设备继续记录</p>
+<div class="record-actions">
+<button id="login" class="primary">用 GitHub 登录</button>
+<button id="logout" hidden>退出登录</button>
+<button id="sync-retry">重新同步</button>
+<button id="migrate-local" hidden>导入本机旧记录到账号</button>
+</div>
+<p id="sync-state" role="status">正在连接账号服务…</p>
+</section>
 </main>
 <dialog id="medicine-editor">
 <form id="medicine-form">

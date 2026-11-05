@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#fff6f1">
 <title>吃药服务</title>
 <link rel="stylesheet" href="style.css">
-<script defer src="app.js"></script>
+<script type="module" src="app.js"></script>
 </head>
 <body>
 <main>
@@ -36,6 +36,18 @@
   </g>
 </svg>
 </header>
+<section class="card account-card" aria-labelledby="account-title">
+<h2 id="account-title">☁️ 我的云端小本本</h2>
+<p id="account-name">登录后，在不同设备继续记录</p>
+<div class="record-actions">
+<button id="login" class="primary">用 GitHub 登录</button>
+<button id="logout" hidden>退出登录</button>
+<button id="sync-retry">重新同步</button>
+<button id="migrate-local" hidden>导入本机旧记录到账号</button>
+</div>
+<p id="sync-state" role="status">正在连接账号服务…</p>
+</section>
+<div id="journal" hidden>
 <section class="card" aria-labelledby="record-title">
 <h2 id="record-title"><span class="section-icon peach" aria-hidden="true">☀️</span>今天的小记录</h2>
 <p id="last">正在读取记录…</p>
@@ -67,12 +79,13 @@
 <section class="card" aria-labelledby="history-title"><h2 id="history-title"><span class="section-icon peach" aria-hidden="true">📖</span>用药小本本</h2><div id="history"></div></section>
 <section class="card" aria-labelledby="backup-title">
 <h2 id="backup-title"><span class="section-icon lilac" aria-hidden="true">📦</span>备份小盒子</h2>
-<p>记录保存在当前浏览器。换设备、浏览器或网址时，可以导出备份再导入。</p>
+<p>记录保存在当前登录账号的云端小本本里。也可以导出一份备份，自己留好。</p>
 <button id="export">导出备份</button>
 <button id="import">导入备份</button>
 <input id="file" type="file" accept=".json,application/json" hidden>
 <p role="status" id="backup-status"></p>
 </section>
+</div>
 </main>
 <dialog id="medicine-editor">
 <form id="medicine-form">

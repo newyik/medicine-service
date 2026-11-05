@@ -131,3 +131,7 @@ button:disabled { opacity: .4; cursor: default; }
   .calendar-day { min-height: 60px; padding: 7px 2px; }
   .calendar-times { font-size: .75rem; }
 }
+
+[hidden] { display: none !important; }
+#journal { display: contents; }
+.account-card { grid-column: 1 / -1; }

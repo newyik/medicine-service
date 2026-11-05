@@ -1,4 +1,11 @@
-'use strict';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { cloudConfig } from './config.js';
+
+const client = createClient(cloudConfig.url, cloudConfig.publicKey);
+let signedInUser = null;
+let cloudState = null;
+let writeQueue = Promise.resolve();
+let accountGeneration = 0;
 
 const key = 'medicine-service.v1';
 const byId = id => document.getElementById(id);
@@ -58,10 +65,14 @@ function validateMedicines(medicines) {
   });
 }
 
-function loadState() {
-  const stored = JSON.parse(localStorage.getItem(key) ?? '[]');
+function checkedState(stored) {
   if (Array.isArray(stored)) return { records: validate(stored), medicines: [] };
   return { records: validate(stored.records), medicines: validateMedicines(stored.medicines) };
+}
+
+function loadState() {
+  if (!cloudState) throw new Error('Please sign in');
+  return structuredClone(cloudState);
 }
 
 function loadMedicines() {
@@ -173,17 +184,48 @@ function renderMedicineManagement(medicines) {
   });
 }
 
+async function readJournal(userId) {
+  const { data, error } = await client.from('medicine_journals')
+    .select('data,revision').eq('user_id', userId).single();
+  if (error) throw error;
+  return { state: checkedState(data.data), revision: data.revision };
+}
+
 function update(change, message, status = byId('status')) {
-  try {
-    const state = loadState();
-    localStorage.setItem(key, JSON.stringify(change(state)));
-  } catch {
-    status.textContent = '保存失败。请检查浏览器存储是否可用。';
-    return false;
-  }
-  render();
-  status.textContent = message;
-  return true;
+  const userId = signedInUser?.id;
+  const generation = accountGeneration;
+  const operation = async () => {
+    if (!userId || generation !== accountGeneration) return false;
+    status.textContent = '正在保存到云端…';
+    try {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const current = await readJournal(userId);
+        if (generation !== accountGeneration) return false;
+        const next = checkedState(change(current.state));
+        const { data: saved, error } = await client.rpc('save_medicine_journal', {
+          expected_revision: current.revision, new_data: next
+        });
+        if (error) throw error;
+        if (!saved) continue;
+        if (generation !== accountGeneration) return false;
+        cloudState = next;
+        render();
+        status.textContent = message;
+        byId('sync-state').textContent = '已同步 · ' + clock.format(Date.now());
+        return true;
+      }
+      throw new Error('Concurrent edits');
+    } catch (error) {
+      status.textContent = error.message === 'Duplicate medicine'
+        ? '这个药物名称已经在列表里，请换一个名称。'
+        : '云端保存失败，本次操作尚未确认保存。请检查网络后重试。';
+      byId('sync-state').textContent = '同步遇到问题，请重试';
+      return false;
+    }
+  };
+  const pending = writeQueue.then(operation, operation);
+  writeQueue = pending.catch(() => {});
+  return pending;
 }
 
 function makeRecord(at) {
@@ -412,7 +454,7 @@ function openMedicineEditor(medicine) {
 }
 byId('add-med').onclick = () => openMedicineEditor();
 byId('medicine-cancel').onclick = () => medicineEditor.close();
-byId('medicine-form').onsubmit = event => {
+byId('medicine-form').onsubmit = async event => {
   event.preventDefault();
   const name = byId('medicine-name').value.trim();
   const status = byId('medicine-status');
@@ -420,29 +462,25 @@ byId('medicine-form').onsubmit = event => {
     status.textContent = '请输入药物名称或代号。';
     return;
   }
-  try {
-    const state = loadState();
-    if (state.medicines.some(item => item.id !== editingMedicineId && item.name === name)) {
-      status.textContent = '这个名称已经在列表里。';
-      return;
+  const medicineId = editingMedicineId;
+  const newId = makeRecord(0).id;
+  const kind = kindPicker.value;
+  const icon = iconPicker.value;
+  const saved = await update(state => {
+    if (state.medicines.some(item => item.id !== medicineId && item.name === name)) {
+      throw new Error('Duplicate medicine');
     }
-    if (editingMedicineId) {
-      const medicine = state.medicines.find(item => item.id === editingMedicineId);
+    if (medicineId) {
+      const medicine = state.medicines.find(item => item.id === medicineId);
       if (!medicine) throw new Error('Missing medicine');
       medicine.name = name;
-      medicine.icon = iconPicker.value || defaultIcon(medicine.kind);
+      medicine.icon = icon || defaultIcon(medicine.kind);
     } else {
-      const kind = kindPicker.value;
-      state.medicines.push({ id: makeRecord(0).id, name, kind, icon: iconPicker.value || defaultIcon(kind) });
+      state.medicines.push({ id: newId, name, kind, icon: icon || defaultIcon(kind) });
     }
-    localStorage.setItem(key, JSON.stringify(state));
-  } catch {
-    status.textContent = '保存失败。请检查浏览器存储是否可用。';
-    return;
-  }
-  render();
-  medicineEditor.close();
-  byId('status').textContent = editingMedicineId ? '已保存「' + name + '」。' : '已添加 ' + name + '。';
+    return state;
+  }, medicineId ? '已保存「' + name + '」。' : '已添加 ' + name + '。', status);
+  if (saved) medicineEditor.close();
 };
 
 byId('now').onclick = () => {
@@ -451,7 +489,7 @@ byId('now').onclick = () => {
 };
 byId('manual').onclick = () => openEditor();
 byId('cancel').onclick = () => editor.close();
-byId('edit-form').onsubmit = event => {
+byId('edit-form').onsubmit = async event => {
   event.preventDefault();
   const date = new Date(when.value);
   const status = byId('edit-status');
@@ -459,7 +497,8 @@ byId('edit-form').onsubmit = event => {
     status.textContent = '请选择一个有效的服药时间。';
     return;
   }
-  const record = editingId ? { id: editingId, at: date.getTime() } : makeRecord(date.getTime());
+  const targetId = editingId;
+  const record = targetId ? { id: targetId, at: date.getTime() } : makeRecord(date.getTime());
   const medicineId = byId('record-medicine').value;
   if (medicineId) {
     const quantity = byId('quantity').valueAsNumber;
@@ -469,12 +508,17 @@ byId('edit-form').onsubmit = event => {
     }
     Object.assign(record, { medicineId, quantity });
   }
-  const saved = update(state => ({
-    ...state,
-    records: editingId
-      ? state.records.map(item => item.id === editingId ? record : item)
-      : [...state.records, record]
-  }), '已保存。', status);
+  const saved = await update(state => {
+    if (targetId && !state.records.some(item => item.id === targetId)) {
+      throw new Error('Record removed on another device');
+    }
+    return {
+      ...state,
+      records: targetId
+        ? state.records.map(item => item.id === targetId ? record : item)
+        : [...state.records, record]
+    };
+  }, '已保存。', status);
   if (saved) {
     editor.close();
     byId('status').textContent = '已保存 ' + clock.format(record.at) + '。';
@@ -508,23 +552,115 @@ byId('file').onchange = async event => {
     if (![1, 2].includes(backup?.version)) throw new Error('Invalid backup version');
     const imported = validate(backup.records);
     const importedMedicines = backup.version === 2 ? validateMedicines(backup.medicines) : [];
-    const medicines = loadMedicines();
-    const ids = new Set(medicines.map(item => item.id));
-    const merged = [...medicines, ...importedMedicines.filter(item => !ids.has(item.id))];
-    const mergedIds = new Set(merged.map(item => item.id));
-    if (imported.some(record => record.medicineId && !mergedIds.has(record.medicineId))) {
-      throw new Error('Missing medicine');
-    }
-    update(state => {
-      const ids = new Set(state.records.map(record => record.id));
-      return { medicines: merged, records: [...state.records, ...imported.filter(record => !ids.has(record.id))] };
-    }, '已合并备份，重复记录已跳过。', backupStatus);
+    await mergeBackup(imported, importedMedicines, backupStatus);
   } catch {
     backupStatus.textContent = '无法导入。请选择「吃药服务」导出的 JSON 备份。';
   } finally {
     input.value = '';
   }
 };
-window.addEventListener('storage', render);
-window.addEventListener('focus', render);
-render();
+
+async function mergeBackup(records, medicines, status) {
+  return update(state => {
+    const medicineIds = new Set(state.medicines.map(item => item.id));
+    const merged = [...state.medicines, ...medicines.filter(item => !medicineIds.has(item.id))];
+    const mergedIds = new Set(merged.map(item => item.id));
+    if (records.some(record => record.medicineId && !mergedIds.has(record.medicineId))) {
+      throw new Error('Missing medicine');
+    }
+    const recordIds = new Set(state.records.map(item => item.id));
+    return { medicines: merged, records: [...state.records, ...records.filter(item => !recordIds.has(item.id))] };
+  }, '已合并到云端，重复记录已跳过。', status);
+}
+
+let refreshing = false;
+async function refreshJournal() {
+  if (!signedInUser || refreshing || document.hidden) return;
+  const generation = accountGeneration;
+  const userId = signedInUser.id;
+  refreshing = true;
+  try {
+    await writeQueue;
+    const current = await readJournal(userId);
+    if (generation !== accountGeneration) return;
+    if (JSON.stringify(cloudState) !== JSON.stringify(current.state)) {
+      cloudState = current.state;
+      render();
+    }
+    byId('sync-state').textContent = '已同步 · ' + clock.format(Date.now());
+  } catch {
+    if (generation === accountGeneration) byId('sync-state').textContent = '读取云端失败，请检查网络后重试';
+  } finally {
+    refreshing = false;
+  }
+}
+
+async function showAccount(session) {
+  const user = session?.user ?? null;
+  if (signedInUser?.id === user?.id && cloudState) return;
+  const generation = ++accountGeneration;
+  signedInUser = user;
+  cloudState = null;
+  byId('journal').hidden = true;
+  editor.close();
+  medicineEditor.close();
+  byId('login').hidden = Boolean(user);
+  byId('logout').hidden = !user;
+  byId('account-name').textContent = user ? '已登录 · ' + (user.user_metadata.user_name || user.email || '我的账号') : '登录后，在不同设备继续记录';
+  byId('sync-state').textContent = user ? '正在读取云端记录…' : '用 GitHub 登录，查看自己的用药小本本。';
+  if (!user) return;
+  try {
+    const { error } = await client.from('medicine_journals').upsert(
+      { user_id: user.id }, { onConflict: 'user_id', ignoreDuplicates: true }
+    );
+    if (error) throw error;
+    const current = await readJournal(user.id);
+    if (generation !== accountGeneration) return;
+    cloudState = current.state;
+    byId('journal').hidden = false;
+    render();
+    byId('sync-state').textContent = '已同步 · ' + clock.format(Date.now());
+    const local = checkedState(JSON.parse(localStorage.getItem(key) ?? '[]'));
+    byId('migrate-local').hidden = !local.records.length && !local.medicines.length;
+  } catch {
+    if (generation === accountGeneration) byId('sync-state').textContent = '云端读取失败，请点「重新同步」重试。';
+  }
+}
+
+byId('login').onclick = async () => {
+  const { error } = await client.auth.signInWithOAuth({
+    provider: 'github', options: { redirectTo: location.origin + location.pathname }
+  });
+  if (error) byId('sync-state').textContent = '登录未完成，请重试。';
+};
+byId('logout').onclick = async () => {
+  await writeQueue;
+  const { error } = await client.auth.signOut({ scope: 'local' });
+  if (error) byId('sync-state').textContent = '退出失败，请重试。';
+};
+byId('sync-retry').onclick = async () => {
+  const { data, error } = await client.auth.getSession();
+  if (error) return;
+  if (!cloudState) await showAccount(data.session);
+  else await refreshJournal();
+};
+byId('migrate-local').onclick = async () => {
+  if (!confirm('把此浏览器里的药物和用药记录合并到当前登录账号的 Supabase 云端数据库？')) return;
+  try {
+    const local = checkedState(JSON.parse(localStorage.getItem(key) ?? '[]'));
+    await mergeBackup(local.records, local.medicines, byId('sync-state'));
+  } catch {
+    byId('sync-state').textContent = '本机旧记录读取失败，可使用导出的 JSON 备份导入。';
+  }
+};
+client.auth.onAuthStateChange((_event, session) => {
+  setTimeout(() => showAccount(session), 0);
+});
+client.auth.getSession().then(({ data, error }) => {
+  if (error) byId('sync-state').textContent = '登录状态读取失败，请重试。';
+  else showAccount(data.session);
+});
+window.addEventListener('focus', refreshJournal);
+document.addEventListener('visibilitychange', refreshJournal);
+setInterval(refreshJournal, 20000);
+

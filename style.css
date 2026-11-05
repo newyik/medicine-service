@@ -1,0 +1,133 @@
+:root {
+  color-scheme: light;
+  font-family: ui-rounded, system-ui, -apple-system, sans-serif;
+  color: #3e2943;
+  background: #fff6f1;
+  --muted: #6d546c;
+  --border: #e5d0dc;
+  --accent: #f2dbee;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { width: min(100%, 690px); margin: auto; padding: 32px 16px; }
+.hero { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 18px; margin-bottom: 14px; border: 1px solid #efd6df; border-radius: 27px; background: linear-gradient(120deg, #fff3e9, #fae5ef); }
+.hero p:last-child { margin-bottom: 0; }
+.hero-art { width: clamp(84px, 27vw, 168px); flex: 0 0 auto; }
+h1 { font-size: clamp(2.15rem, 7vw, 3.2rem); margin: 0; letter-spacing: -.035em; }
+h2 { font-size: 1.2rem; margin: 0 0 12px; }
+h3 { font-size: .95rem; margin: 18px 0 5px; color: var(--muted); }
+p { color: var(--muted); margin: 8px 0 14px; line-height: 1.55; }
+.eyebrow { color: #733d68; font-size: .8rem; font-weight: 650; letter-spacing: .06em; }
+.card, dialog { background: #fffcfb; border: 1px solid var(--border); border-radius: 23px; padding: 18px; margin-bottom: 14px; }
+button, input {
+  color: inherit; font: inherit; border-radius: 13px; border: 1px solid var(--border);
+  background: #faf1f7; padding: 9px 12px; min-height: 44px;
+}
+button { cursor: pointer; }
+button:hover { filter: brightness(.97); }
+:focus-visible { outline: 3px solid #895682; outline-offset: 3px; }
+.primary { color: #472348; background: var(--accent); border-color: transparent; font-weight: 700; }
+.record-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#now { flex: 1 0 100%; min-height: 52px; font-size: 1.1rem; }
+[role="status"]:empty { display: none; }
+.record { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.record:last-child { border-bottom: 0; }
+.record time { font-variant-numeric: tabular-nums; }
+dialog { margin: auto; width: min(420px, calc(100% - 32px)); }
+dialog::backdrop { background: #45264466; }
+label { display: block; margin-bottom: 6px; }
+input { width: 100%; min-width: 0; }
+.actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+select {
+  width: 100%; min-height: 44px; padding: 9px 12px; border-radius: 13px;
+  color: inherit; background: #faf1f7; border: 1px solid var(--border); font: inherit;
+}
+form label:not(:first-child) { margin-top: 10px; }
+#medicines:not(:empty) { margin-bottom: 14px; }
+.med-name { overflow-wrap: anywhere; }
+.med-controls { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.med-controls input { width: 66px; }
+.record time { overflow-wrap: anywhere; }
+.calendar-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.calendar-nav h3 { margin: 0; color: inherit; }
+.calendar-nav button { min-width: 44px; font-size: 1.25rem; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.weekdays { color: var(--muted); text-align: center; font-size: .8rem; margin-bottom: 5px; }
+.calendar-day {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start; gap: 2px; padding: 5px 1px;
+  border-radius: 8px; min-width: 0; min-height: 47px;
+  line-height: 1.15; font-variant-numeric: tabular-nums;
+}
+.calendar-day[aria-current="date"] { border-color: #9d6c96; }
+.calendar-day[aria-pressed="true"] { background: var(--accent); color: #472348; }
+#calendar-detail ul { padding-left: 1.2em; line-height: 1.6; overflow-wrap: anywhere; }
+.medicine-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.medicine-icon { min-width: 44px; padding: 5px; flex: 0 0 auto; }
+.calendar-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; width: 100%; }
+.calendar-badges small {
+  padding: 1px 2px; border-radius: 4px; color: inherit;
+  background: #eadef3; white-space: nowrap; font-size: .69rem;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.calendar-day[aria-pressed="true"] .calendar-badges small { background: #47234824; }
+.medicine-recent { display: block; color: var(--muted); margin-top: 6px; font-size: .78rem; line-height: 1.5; }
+#medicine-management { margin-top: 12px; }
+summary { cursor: pointer; min-height: 44px; padding: 10px 0; }
+.management-row { padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.management-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+button:disabled { opacity: .4; cursor: default; }
+#calendar-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+#calendar-filters button { font-size: .85rem; max-width: 100%; overflow-wrap: anywhere; }
+#calendar-filters button[aria-pressed="true"] { background: var(--accent); color: #472348; }
+.calendar-times { display: grid; gap: 3px; font-size: .64rem; font-variant-numeric: tabular-nums; }
+.card, dialog { box-shadow: 0 5px 18px #77486f0d; }
+.section-icon {
+  display: inline-grid; place-items: center; vertical-align: middle;
+  width: 34px; height: 34px; margin-right: 7px; border-radius: 11px; font-size: 1rem;
+}
+.section-icon.peach { background: #ffeadc; }
+.section-icon.lilac { background: #f1e5f8; }
+.medicine-icon { background: #f9e7ee; }
+.med-controls button { background: #f8e6ef; }
+#calendar-filters button { border-radius: 100px; }
+.calendar-day { background: #fcf5fa; }
+.calendar-day[aria-pressed="true"] { border-color: #9d6c96; }
+@media (max-width: 360px) {
+  .hero { padding: 14px; }
+  .hero h1 { font-size: 1.85rem; }
+}
+
+@media (max-width: 560px) {
+  main {
+    padding: 14px max(12px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .card { padding: 12px; border-radius: 19px; }
+  .record-actions > button { flex: 1 1 auto; }
+  .med-controls input { width: 49px; padding-inline: 6px; }
+  .med-controls button, #history .actions button { padding-inline: 8px; }
+  .medicine-label { gap: 6px; }
+  .medicine-icon { align-self: flex-start; }
+  #medicines > .record { gap: 6px; }
+  .calendar-grid { gap: 3px; }
+  .calendar-day { min-height: 46px; }
+  .calendar-times { font-size: .67rem; }
+  input, select { font-size: max(16px, 1rem); }
+}
+
+@media (min-width: 1000px) {
+  main {
+    width: min(100%, 1280px);
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 18px;
+    padding-inline: 24px;
+    align-items: start;
+  }
+  .hero { grid-column: 1 / -1; padding-inline: 26px; }
+  .hero, .card { margin-bottom: 0; }
+  .card { padding: 22px; }
+  .calendar-grid { gap: 6px; }
+  .calendar-day { min-height: 60px; padding: 7px 2px; }
+  .calendar-times { font-size: .75rem; }
+}

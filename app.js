@@ -1,0 +1,530 @@
+'use strict';
+
+const key = 'medicine-service.v1';
+const byId = id => document.getElementById(id);
+const editor = byId('editor');
+const when = byId('when');
+const clock = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const shortDay = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' });
+const fullDay = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+const medicineIcons = ['💊', '🩹', '💧', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⭐', '🌙', '🌿', '🔷', '❤️'];
+let calendarMedicineId = '';
+let editingMedicineId = null;
+let editingId = null;
+let calendarMonth = new Date();
+let selectedDay = dayKey(calendarMonth);
+
+function dayKey(date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return date.getFullYear() + '-' + month + '-' + day;
+}
+
+function timeField(date) {
+  return dayKey(date) + 'T' + clock.format(date);
+}
+
+function validate(records) {
+  if (!Array.isArray(records)) throw new Error('Invalid records');
+  const ids = new Set();
+  return records.map(record => {
+    if (!record || typeof record.id !== 'string' || !record.id || ids.has(record.id) ||
+        typeof record.at !== 'number' || !Number.isFinite(new Date(record.at).getTime())) {
+      throw new Error('Invalid record');
+    }
+    ids.add(record.id);
+    if (record.medicineId === undefined) return { id: record.id, at: record.at };
+    if (typeof record.medicineId !== 'string' || !record.medicineId || !validQuantity(record.quantity)) {
+      throw new Error('Invalid medicine record');
+    }
+    return { id: record.id, at: record.at, medicineId: record.medicineId, quantity: record.quantity };
+  });
+}
+
+function validQuantity(value) {
+  return Number.isInteger(value) && value >= 1 && value <= 999;
+}
+
+function validateMedicines(medicines) {
+  if (!Array.isArray(medicines)) throw new Error('Invalid medicines');
+  const ids = new Set();
+  return medicines.map(({ id, name, kind, icon, archived }) => {
+    if (typeof id !== 'string' || !id || ids.has(id) || typeof name !== 'string' ||
+        !name.trim() || name.length > 60 || !['oral', 'patch'].includes(kind)) {
+      throw new Error('Invalid medicine');
+    }
+    ids.add(id);
+    return { id, name, kind, icon: medicineIcons.includes(icon) ? icon : defaultIcon(kind), archived: archived === true };
+  });
+}
+
+function loadState() {
+  const stored = JSON.parse(localStorage.getItem(key) ?? '[]');
+  if (Array.isArray(stored)) return { records: validate(stored), medicines: [] };
+  return { records: validate(stored.records), medicines: validateMedicines(stored.medicines) };
+}
+
+function loadMedicines() {
+  return loadState().medicines;
+}
+
+function defaultIcon(kind) {
+  return kind === 'patch' ? '🩹' : '💊';
+}
+
+function unit(medicine) {
+  return medicine?.kind === 'patch' ? '贴' : '粒';
+}
+
+function describe(record, medicines) {
+  if (!record.medicineId) return medicines.size ? ' · 未分类' : '';
+  const medicine = medicines.get(record.medicineId);
+  return ' · ' + (medicine?.name ?? '药物') + ' ' + record.quantity + ' ' + unit(medicine);
+}
+
+function renderMedicines(medicines, today, records) {
+  const container = byId('medicines');
+  container.replaceChildren();
+  byId('now').hidden = medicines.length > 0;
+  for (const medicine of medicines.filter(item => !item.archived)) {
+    const total = today.reduce((sum, record) => record.medicineId === medicine.id ? sum + record.quantity : sum, 0);
+    const row = element('div', '');
+    row.className = 'record';
+    const name = element('div', medicine.name + ' · 今天 ' + total + ' ' + unit(medicine));
+    name.className = 'med-name';
+    const last = records.find(record => record.medicineId === medicine.id);
+    const recent = element('small', last
+      ? '上次 ' + dayKey(new Date(last.at)) + ' ' + clock.format(last.at) + ' · ' + last.quantity + ' ' + unit(medicine)
+      : '还没记过这款药');
+    recent.className = 'medicine-recent';
+    name.append(recent);
+    const controls = element('div', '');
+    controls.className = 'med-controls';
+    const quantity = element('input', '');
+    quantity.type = 'number';
+    quantity.min = '1';
+    quantity.max = '999';
+    quantity.step = '1';
+    quantity.value = '1';
+    quantity.setAttribute('aria-label', medicine.name + '本次用量（' + unit(medicine) + '）');
+    const button = element('button', medicine.kind === 'patch' ? '刚贴了' : '刚吃了');
+    button.onclick = () => {
+      const amount = quantity.valueAsNumber;
+      if (!validQuantity(amount)) {
+        quantity.reportValidity();
+        quantity.focus();
+        byId('status').textContent = '请输入 1 到 999 之间的整数。';
+        return;
+      }
+      const record = { ...makeRecord(Date.now()), medicineId: medicine.id, quantity: amount };
+      update(state => ({ ...state, records: [...state.records, record] }), '已记录 ' + medicine.name + ' ' + amount + ' ' + unit(medicine) + '。');
+    };
+    controls.append(quantity, button);
+    const label = element('div', '');
+    label.className = 'medicine-label';
+    const icon = element('button', medicine.icon);
+    icon.className = 'medicine-icon';
+    icon.setAttribute('aria-label', '修改「' + medicine.name + '」');
+    icon.title = '修改药物';
+    icon.onclick = () => openMedicineEditor(medicine);
+    label.append(icon, name);
+    row.append(label, controls);
+    container.append(row);
+  }
+}
+
+function renderMedicineManagement(medicines) {
+  const list = byId('medicine-list');
+  list.replaceChildren();
+  if (!medicines.length) list.append(element('p', '添加药物后，可以在这里管理。'));
+  medicines.forEach((medicine, index) => {
+    const row = element('div', '');
+    row.className = 'management-row';
+    row.append(element('div', medicine.icon + ' ' + medicine.name + (medicine.archived ? '（已收起）' : '')));
+    const actions = element('div', '');
+    actions.className = 'management-actions';
+    const edit = element('button', '修改');
+    edit.onclick = () => openMedicineEditor(medicine);
+    actions.append(edit);
+    for (const [offset, label] of [[-1, '上移'], [1, '下移']]) {
+      const move = element('button', label);
+      move.disabled = index + offset < 0 || index + offset >= medicines.length;
+      move.setAttribute('aria-label', label + medicine.name);
+      move.onclick = () => update(state => {
+        const position = state.medicines.findIndex(item => item.id === medicine.id);
+        const destination = position + offset;
+        if (position < 0 || destination < 0 || destination >= state.medicines.length) return state;
+        const [item] = state.medicines.splice(position, 1);
+        state.medicines.splice(destination, 0, item);
+        return state;
+      }, '已调整药物顺序。');
+      actions.append(move);
+    }
+    const archive = element('button', medicine.archived ? '恢复显示' : '收起');
+    archive.onclick = () => update(state => {
+      const item = state.medicines.find(item => item.id === medicine.id);
+      if (!item) throw new Error('Missing medicine');
+      item.archived = !medicine.archived;
+      return state;
+    }, medicine.archived ? '已恢复显示药物。' : '已收起药物，可在管理药物中恢复显示。');
+    actions.append(archive);
+    row.append(actions);
+    list.append(row);
+  });
+}
+
+function update(change, message, status = byId('status')) {
+  try {
+    const state = loadState();
+    localStorage.setItem(key, JSON.stringify(change(state)));
+  } catch {
+    status.textContent = '保存失败。请检查浏览器存储是否可用。';
+    return false;
+  }
+  render();
+  status.textContent = message;
+  return true;
+}
+
+function makeRecord(at) {
+  const id = Array.from(crypto.getRandomValues(new Uint32Array(4)), value => value.toString(16).padStart(8, '0')).join('');
+  return { id, at };
+}
+
+function element(tag, value) {
+  const node = document.createElement(tag);
+  node.textContent = value;
+  return node;
+}
+
+function render() {
+  let records;
+  let medicines;
+  try {
+    const state = loadState();
+    medicines = new Map(state.medicines.map(medicine => [medicine.id, medicine]));
+    records = state.records.sort((a, b) => b.at - a.at);
+  } catch {
+    byId('last').textContent = '读取失败。请检查浏览器是否允许本地存储。';
+    return;
+  }
+  const grouped = new Map();
+  for (const record of records) {
+    const date = new Date(record.at);
+    const day = dayKey(date);
+    if (!grouped.has(day)) grouped.set(day, []);
+    grouped.get(day).push(record);
+  }
+
+  const today = new Date();
+  const todayRecords = grouped.get(dayKey(today)) ?? [];
+  renderMedicines([...medicines.values()], todayRecords, records);
+  renderMedicineManagement([...medicines.values()]);
+  const count = todayRecords.length;
+  const last = records[0];
+  byId('last').textContent = last
+    ? '今天已记录 ' + count + ' 次 · 最近一次 ' + shortDay.format(last.at) + ' ' + clock.format(last.at)
+    : '今天还没记过用药';
+
+  renderCalendar(grouped, medicines, today);
+
+  const history = byId('history');
+  history.replaceChildren();
+  if (!records.length) history.append(element('p', '记下第一笔后，就能在这里回看啦。'));
+  for (const group of grouped.values()) {
+    const day = element('section', '');
+    day.append(element('h3', fullDay.format(group[0].at)));
+    for (const record of group) {
+      const row = element('div', '');
+      row.className = 'record';
+      const time = element('time', clock.format(record.at) + describe(record, medicines));
+      time.dateTime = new Date(record.at).toISOString();
+      const edit = element('button', '修改');
+      edit.onclick = () => openEditor(record);
+      const remove = element('button', '删除');
+      remove.onclick = () => {
+        if (confirm('删除 ' + fullDay.format(record.at) + ' ' + clock.format(record.at) + ' 的记录？')) {
+          update(state => ({ ...state, records: state.records.filter(item => item.id !== record.id) }), '已删除记录。');
+        }
+      };
+      const actions = element('div', '');
+      actions.className = 'actions';
+      actions.style.marginTop = '0';
+      actions.append(edit, remove);
+      row.append(time, actions);
+      day.append(row);
+    }
+    history.append(day);
+  }
+}
+
+function renderCalendar(grouped, medicines, today) {
+  if (calendarMedicineId && !medicines.has(calendarMedicineId)) calendarMedicineId = '';
+  const filters = byId('calendar-filters');
+  filters.replaceChildren();
+  const choices = [{ id: '', name: '全部药物', icon: '' }, ...medicines.values()];
+  for (const medicine of choices) {
+    const filter = element('button', (medicine.icon + ' ' + medicine.name).trim() + (medicine.archived ? '（已收起）' : ''));
+    filter.setAttribute('aria-pressed', String(calendarMedicineId === medicine.id));
+    filter.onclick = () => {
+      calendarMedicineId = medicine.id;
+      renderCalendar(grouped, medicines, today);
+      filters.children[choices.indexOf(medicine)].focus();
+    };
+    filters.append(filter);
+  }
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const leading = (firstDay.getDay() + 6) % 7;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const todayKey = dayKey(today);
+  const grid = byId('calendar-days');
+  const detail = byId('calendar-detail');
+  byId('calendar-month').textContent = year + '年' + (month + 1) + '月';
+  grid.replaceChildren();
+  detail.replaceChildren();
+
+  function showDay(date, records) {
+    detail.replaceChildren(element('h3', fullDay.format(date) + (calendarMedicineId ? ' · ' + medicines.get(calendarMedicineId).name : '')));
+    if (!records.length) {
+      detail.append(element('p', calendarMedicineId ? '这一天没有该药物的记录。' : '这一天还没有用药记录。'));
+      return;
+    }
+    const list = element('ul', '');
+    for (const record of [...records].reverse()) {
+      list.append(element('li', clock.format(record.at) + describe(record, medicines)));
+    }
+    detail.append(list);
+  }
+
+  for (let i = 0; i < leading; i++) grid.append(element('span', ''));
+  for (let day = 1; day <= lastDay; day++) {
+    const date = new Date(year, month, day);
+    const key = dayKey(date);
+    const dayRecords = grouped.get(key) ?? [];
+    const records = calendarMedicineId ? dayRecords.filter(record => record.medicineId === calendarMedicineId) : dayRecords;
+    const cell = element('button', '');
+    cell.className = 'calendar-day';
+    const counts = new Map();
+    for (const record of records) {
+      const id = record.medicineId;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    const badges = element('span', '');
+    badges.className = 'calendar-badges';
+    badges.setAttribute('aria-hidden', 'true');
+    const labels = [];
+    for (const [id, count] of counts) {
+      const medicine = medicines.get(id);
+      const label = (medicine?.name ?? '未分类') + ' ' + count + ' 次';
+      labels.push(label);
+      const badge = element('small', (medicine?.icon ?? '•') + count);
+      badge.title = label;
+      badges.append(badge);
+    }
+    cell.setAttribute('aria-label', fullDay.format(date) + '，' + (labels.join('，') || '暂无记录'));
+    cell.setAttribute('aria-pressed', String(key === selectedDay));
+    if (key === todayKey) cell.setAttribute('aria-current', 'date');
+    cell.append(element('span', day), badges);
+    if (calendarMedicineId) {
+      const times = element('span', '');
+      times.className = 'calendar-times';
+      for (const record of [...records].reverse()) times.append(element('span', clock.format(record.at)));
+      cell.append(times);
+    }
+    cell.onclick = () => {
+      grid.querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed', 'false');
+      selectedDay = key;
+      cell.setAttribute('aria-pressed', 'true');
+      showDay(date, records);
+    };
+    grid.append(cell);
+    if (key === selectedDay) showDay(date, records);
+  }
+
+  function moveMonth(offset) {
+    calendarMonth = new Date(year, month + offset, 1);
+    selectedDay = calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth()
+      ? todayKey
+      : dayKey(calendarMonth);
+    renderCalendar(grouped, medicines, today);
+  }
+
+  byId('prev-month').onclick = () => moveMonth(-1);
+  byId('next-month').onclick = () => moveMonth(1);
+}
+
+function openEditor(record) {
+  editingId = record?.id ?? null;
+  byId('edit-title').textContent = record ? '修改时间' : '补记时间';
+  byId('edit-status').textContent = '';
+  const medicines = loadMedicines();
+  const picker = byId('record-medicine');
+  const unclassified = element('option', '未分类');
+  unclassified.value = '';
+  picker.replaceChildren(unclassified);
+  for (const medicine of medicines) {
+    const option = element('option', medicine.name + (medicine.archived ? '（已收起）' : ''));
+    option.value = medicine.id;
+    picker.append(option);
+  }
+  byId('medicine-fields').hidden = medicines.length === 0;
+  picker.value = record?.medicineId ?? (record ? '' : medicines.find(item => !item.archived)?.id ?? '');
+  byId('quantity').value = record?.quantity ?? 1;
+  updateQuantityField();
+  when.max = timeField(new Date());
+  when.value = timeField(record ? new Date(record.at) : new Date());
+  editor.showModal();
+}
+
+function updateQuantityField() {
+  const selected = byId('record-medicine').value;
+  const medicine = loadMedicines().find(item => item.id === selected);
+  const quantity = byId('quantity');
+  quantity.disabled = !medicine;
+  byId('quantity-label').textContent = medicine ? '本次用量（' + unit(medicine) + '）' : '本次用量';
+}
+
+byId('record-medicine').onchange = updateQuantityField;
+const medicineEditor = byId('medicine-editor');
+const iconPicker = byId('medicine-icon');
+const kindPicker = byId('medicine-kind');
+const autoIcon = element('option', '按类型自动选择');
+autoIcon.value = '';
+iconPicker.append(autoIcon);
+for (const icon of medicineIcons) {
+  const option = element('option', icon);
+  option.value = icon;
+  iconPicker.append(option);
+}
+
+function openMedicineEditor(medicine) {
+  editingMedicineId = medicine?.id ?? null;
+  byId('medicine-title').textContent = medicine ? '修改药物' : '添加药物';
+  byId('medicine-save').textContent = medicine ? '保存' : '添加';
+  byId('medicine-name').value = medicine?.name ?? '';
+  kindPicker.value = medicine?.kind ?? 'oral';
+  kindPicker.disabled = Boolean(medicine);
+  iconPicker.value = medicine?.icon ?? '';
+  byId('medicine-status').textContent = '';
+  medicineEditor.showModal();
+}
+byId('add-med').onclick = () => openMedicineEditor();
+byId('medicine-cancel').onclick = () => medicineEditor.close();
+byId('medicine-form').onsubmit = event => {
+  event.preventDefault();
+  const name = byId('medicine-name').value.trim();
+  const status = byId('medicine-status');
+  if (!name) {
+    status.textContent = '请输入药物名称或代号。';
+    return;
+  }
+  try {
+    const state = loadState();
+    if (state.medicines.some(item => item.id !== editingMedicineId && item.name === name)) {
+      status.textContent = '这个名称已经在列表里。';
+      return;
+    }
+    if (editingMedicineId) {
+      const medicine = state.medicines.find(item => item.id === editingMedicineId);
+      if (!medicine) throw new Error('Missing medicine');
+      medicine.name = name;
+      medicine.icon = iconPicker.value || defaultIcon(medicine.kind);
+    } else {
+      const kind = kindPicker.value;
+      state.medicines.push({ id: makeRecord(0).id, name, kind, icon: iconPicker.value || defaultIcon(kind) });
+    }
+    localStorage.setItem(key, JSON.stringify(state));
+  } catch {
+    status.textContent = '保存失败。请检查浏览器存储是否可用。';
+    return;
+  }
+  render();
+  medicineEditor.close();
+  byId('status').textContent = editingMedicineId ? '已保存「' + name + '」。' : '已添加 ' + name + '。';
+};
+
+byId('now').onclick = () => {
+  const record = makeRecord(Date.now());
+  update(state => ({ ...state, records: [...state.records, record] }), '已记录 ' + clock.format(record.at) + '。');
+};
+byId('manual').onclick = () => openEditor();
+byId('cancel').onclick = () => editor.close();
+byId('edit-form').onsubmit = event => {
+  event.preventDefault();
+  const date = new Date(when.value);
+  const status = byId('edit-status');
+  if (!Number.isFinite(date.getTime()) || date.getTime() > Date.now() || timeField(date) !== when.value) {
+    status.textContent = '请选择一个有效的服药时间。';
+    return;
+  }
+  const record = editingId ? { id: editingId, at: date.getTime() } : makeRecord(date.getTime());
+  const medicineId = byId('record-medicine').value;
+  if (medicineId) {
+    const quantity = byId('quantity').valueAsNumber;
+    if (!validQuantity(quantity)) {
+      status.textContent = '请输入 1 到 999 之间的整数。';
+      return;
+    }
+    Object.assign(record, { medicineId, quantity });
+  }
+  const saved = update(state => ({
+    ...state,
+    records: editingId
+      ? state.records.map(item => item.id === editingId ? record : item)
+      : [...state.records, record]
+  }), '已保存。', status);
+  if (saved) {
+    editor.close();
+    byId('status').textContent = '已保存 ' + clock.format(record.at) + '。';
+  }
+};
+
+const backupStatus = byId('backup-status');
+byId('export').onclick = () => {
+  try {
+    const blob = new Blob([JSON.stringify({ version: 2, ...loadState() }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = element('a', '');
+    link.href = url;
+    link.download = 'medicine-service-' + dayKey(new Date()) + '.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    backupStatus.textContent = '已生成备份文件。';
+  } catch {
+    backupStatus.textContent = '无法读取记录，导出失败。';
+  }
+};
+byId('import').onclick = () => byId('file').click();
+byId('file').onchange = async event => {
+  const input = event.target;
+  const file = input.files[0];
+  if (!file) return;
+  try {
+    const backup = JSON.parse(await file.text());
+    if (![1, 2].includes(backup?.version)) throw new Error('Invalid backup version');
+    const imported = validate(backup.records);
+    const importedMedicines = backup.version === 2 ? validateMedicines(backup.medicines) : [];
+    const medicines = loadMedicines();
+    const ids = new Set(medicines.map(item => item.id));
+    const merged = [...medicines, ...importedMedicines.filter(item => !ids.has(item.id))];
+    const mergedIds = new Set(merged.map(item => item.id));
+    if (imported.some(record => record.medicineId && !mergedIds.has(record.medicineId))) {
+      throw new Error('Missing medicine');
+    }
+    update(state => {
+      const ids = new Set(state.records.map(record => record.id));
+      return { medicines: merged, records: [...state.records, ...imported.filter(record => !ids.has(record.id))] };
+    }, '已合并备份，重复记录已跳过。', backupStatus);
+  } catch {
+    backupStatus.textContent = '无法导入。请选择「吃药服务」导出的 JSON 备份。';
+  } finally {
+    input.value = '';
+  }
+};
+window.addEventListener('storage', render);
+window.addEventListener('focus', render);
+render();

@@ -2,18 +2,18 @@
 <html lang="zh-Hans">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#fff6f1">
 <title>吃药服务</title>
-<link rel="stylesheet" href="style.css">
-<script type="module" src="app.js"></script>
+<link rel="stylesheet" href="style.css?v=20261108-1">
+<script type="module" src="app.js?v=20261108-1"></script>
 </head>
 <body>
 <main>
 <header class="hero">
 <div>
 <p class="eyebrow"><span aria-hidden="true">✦</span> 我的用药小本本</p>
-<h1>吃药服务</h1>
+<div class="hero-title-row"><h1>吃药服务</h1><a class="visit-entry-link" id="visit-link" href="#visits">🏥 看病记录 <span aria-hidden="true">↗</span></a></div>
 <p>吃了几粒、贴了几贴，顺手记一笔。</p>
 </div>
 <svg class="hero-art" viewBox="0 0 188 148" aria-hidden="true" focusable="false">
@@ -36,6 +36,8 @@
   </g>
 </svg>
 </header>
+<section class="card appointment-reminders" id="appointment-reminders" hidden aria-label="预约提醒" aria-live="polite"></section>
+<p id="appointment-action-status" role="status"></p>
 <div id="journal" hidden>
 <section class="card" aria-labelledby="record-title">
 <h2 id="record-title"><span class="section-icon peach" aria-hidden="true">☀️</span>今天的小记录</h2>
@@ -53,7 +55,7 @@
 <div id="medicine-list"></div>
 </details>
 </section>
-<section class="card" aria-labelledby="calendar-title">
+<section class="card illustrated-card calendar-notebook" aria-labelledby="calendar-title">
 <h2 id="calendar-title"><span class="section-icon lilac" aria-hidden="true">🗓️</span>用药小日历</h2>
 <div id="calendar-filters" role="group" aria-label="按药物筛选日历"></div>
 <div class="calendar-nav">
@@ -66,7 +68,7 @@
 <div id="calendar-detail" aria-live="polite"></div>
 </section>
 <section class="card" aria-labelledby="history-title"><h2 id="history-title"><span class="section-icon peach" aria-hidden="true">📖</span>用药小本本</h2><div id="history"></div></section>
-<section class="card" aria-labelledby="backup-title">
+<section class="card illustrated-card backup-notebook" aria-labelledby="backup-title">
 <h2 id="backup-title"><span class="section-icon lilac" aria-hidden="true">📦</span>备份小盒子</h2>
 <p>记录保存在当前登录账号的云端小本本里。也可以导出一份备份，自己留好。</p>
 <button id="export">导出备份</button>
@@ -75,27 +77,54 @@
 <p role="status" id="backup-status"></p>
 </section>
 </div>
+<section id="visits-page" hidden aria-labelledby="visits-heading">
+<a class="back-link" href="#">‹ 返回用药记录</a>
+<div class="visits-compact"><div><h2 id="visits-heading">🏥 看病小本本</h2><p>预约安排和就诊记录，分开记清楚。</p></div><div class="visits-compact-actions"><button id="visit-add" class="primary">＋ 记就诊</button><button id="appointment-add">＋ 预约</button></div></div>
+<section class="card visit-calendar illustrated-card clinic-notebook" aria-labelledby="visit-calendar-title"><div class="visit-calendar-heading"><h2 id="visit-calendar-title">🗓️ 就诊日历</h2><button id="visit-calendar-today">回本月</button></div><div class="calendar-nav"><button id="visit-calendar-prev" aria-label="就诊日历上个月">‹</button><h3 id="visit-calendar-month"></h3><button id="visit-calendar-next" aria-label="就诊日历下个月">›</button></div><div class="calendar-grid weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="calendar-grid" id="visit-calendar-days"></div><p class="visit-calendar-legend"><span>🟢 就诊记录</span><span>🟣 预约／复诊</span><small>点日期查看，再点取消</small></p></section>
+<section class="card"><div class="visit-tabs" role="group" aria-label="按就诊状态筛选"><button id="visits-tab-completed" aria-pressed="true">就诊记录</button><button id="visits-tab-planned" aria-pressed="false">预约／复诊</button></div><label for="visits-filter" class="visually-hidden">搜索就诊记录</label><input type="search" id="visits-filter" placeholder="搜索医院、科室或记录关键词"><div class="visit-list-heading"><h3 id="visit-list-title">预约与复诊安排</h3><button id="visit-calendar-clear" hidden>查看所有日期</button></div><div id="visits-list"></div><details id="cancelled-appointments" hidden></details></section>
+</section>
 <section class="card account-card" aria-labelledby="account-title">
 <h2 id="account-title">☁️ 我的云端小本本</h2>
 <p id="account-name">登录后，在不同设备继续记录</p>
 <div class="record-actions">
-<button id="login" class="primary">用 GitHub 登录</button>
+<button id="login" class="primary">GitHub 登录</button>
+<button id="email-login-toggle" type="button" aria-expanded="false" aria-controls="email-login-panel">邮箱登录</button>
 <button id="logout" hidden>退出登录</button>
 <button id="sync-retry">重新同步</button>
 <button id="migrate-local" hidden>导入本机旧记录到账号</button>
 </div>
 <p id="sync-state" role="status">正在连接账号服务…</p>
+<p id="email-preview-note" class="email-preview-note" hidden>🧪 本地仅模拟邮箱登录与密码设置，不修改真实账号。请使用演示密码，勿填写真实密码。</p>
+<section id="email-login-panel" class="email-login-panel" hidden><form id="email-login-form"><label for="email-login-address">邮箱</label><input id="email-login-address" type="email" autocomplete="username" required placeholder="填写账号邮箱"><label for="email-login-password">密码</label><input id="email-login-password" type="password" autocomplete="current-password" required placeholder="小本本的邮箱登录密码"><div class="actions"><button id="email-login-submit" class="primary" type="submit">用邮箱登录</button></div><p id="email-login-status" role="status"></p></form><p class="field-hint">第一次为已有记录开通邮箱登录？先用 GitHub 进入原账号，再设置邮箱密码。</p><div class="email-login-help"><button type="button" id="email-use-github">先用 GitHub 开通邮箱登录</button><button type="button" id="email-forgot">忘记密码？用 GitHub 进入后重设</button></div></section>
+<details id="email-account-panel" class="email-account-panel" hidden><summary>✉️ 邮箱登录设置</summary><p>当前账号邮箱</p><p id="email-account-value" class="email-account-value"></p><p id="email-method-hint" class="field-hint"></p><form id="email-password-form"><label for="email-new-password">设置邮箱登录密码</label><input id="email-new-password" type="password" autocomplete="new-password" minlength="8" required placeholder="至少 8 位，与 GitHub 密码无关"><label for="email-confirm-password">再输入一次密码</label><input id="email-confirm-password" type="password" autocomplete="new-password" minlength="8" required><div class="actions"><button id="email-password-save" class="primary" type="submit">保存邮箱密码</button></div><p id="email-password-status" role="status"></p></form></details>
 </section>
 </main>
+<dialog id="visit-editor">
+<form id="visit-form">
+<div class="visit-form-head"><h2 id="visit-editor-title">记一次就诊</h2><button type="button" id="visit-cancel" aria-label="关闭就诊编辑">×</button></div>
+<p>先记医院和时间，其他内容可以以后补充。</p>
+<details class="hospital-finder"><summary>🔎 搜索日本医院／诊所</summary><label for="hospital-query">医院名或地区</label><div class="hospital-search-row"><input id="hospital-query" placeholder="例如：東京大学医学部附属病院" maxlength="100"><button type="button" id="hospital-search">搜索</button></div><p class="field-hint">仅查询医院名称或地区，搜索时发送至 OpenStreetMap。也可直接手动填写。</p><p id="hospital-search-status" role="status"></p><div id="hospital-results"></div><a class="search-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">医院查询数据 © OpenStreetMap contributors</a></details>
+<label for="visit-status-kind">记录类型</label><select id="visit-status-kind"><option value="completed">就诊记录</option><option value="scheduled">预约／复诊</option></select>
+<label for="visit-hospital">医院名称 <span class="required-mark">必填</span></label><input id="visit-hospital" required maxlength="300" placeholder="搜索选择，或直接填写医院名称">
+<label for="visit-at" id="visit-at-label">就诊日期和时间</label><input id="visit-at" type="datetime-local" required>
+<div class="visit-field-pair"><div><label for="visit-department">科室</label><input id="visit-department" maxlength="300" placeholder="例如：内科／婦人科"></div><div><label for="visit-doctor">医生</label><input id="visit-doctor" maxlength="300" placeholder="选填"></div></div>
+<label for="visit-reason">就诊原因</label><textarea id="visit-reason" maxlength="3000" rows="2" placeholder="这次主要想看什么？"></textarea>
+<div id="visit-completed-fields"><label for="visit-summary">诊疗摘要／检查结果</label><textarea id="visit-summary" maxlength="3000" rows="3" placeholder="记下医生的说明、检查结果或后续安排"></textarea>
+<div class="visit-field-pair"><div><label for="visit-cost">自付费用（日元）</label><input id="visit-cost" type="number" min="0" max="99999999" step="0.01" placeholder="选填"></div><div><label for="visit-followup">复诊日期</label><input id="visit-followup" type="date"></div></div>
+</div><details><summary>其他补充</summary><label for="visit-address">医院地址</label><input id="visit-address" maxlength="300"><label for="visit-notes">备注</label><textarea id="visit-notes" maxlength="3000" rows="3" placeholder="其他想留下的小笔记"></textarea></details>
+<p id="visit-status" role="status"></p><div class="actions"><button id="visit-save" class="primary" type="submit">保存看病记录</button></div>
+</form>
+</dialog>
 <dialog id="medicine-editor">
 <form id="medicine-form">
 <h2 id="medicine-title">添加药物</h2>
 <label for="medicine-name">药物名称或代号</label>
 <input id="medicine-name" maxlength="60" required>
 <label for="medicine-kind">类型</label>
-<select id="medicine-kind"><option value="oral">口服药</option><option value="patch">贴剂</option></select>
-<label for="medicine-icon">药物图标</label>
-<select id="medicine-icon"></select>
+<select id="medicine-kind"></select>
+<label id="medicine-icon-label">药物图标</label>
+<select id="medicine-icon" hidden aria-hidden="true" tabindex="-1"></select>
+<div id="medicine-icon-grid" role="group" aria-labelledby="medicine-icon-label"></div>
 <div class="actions"><button type="button" id="medicine-cancel">取消</button><button class="primary" id="medicine-save">添加</button></div>
 <p role="status" id="medicine-status"></p>
 </form>

@@ -1,5 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
+import { initVisits, validateVisits } from './visits.js?v=20261108-1';
+import { initEmailAuth } from './email-auth.js?v=20261108-1';
 
 const client = createClient(cloudConfig.url, cloudConfig.publicKey);
 let signedInUser = null;
@@ -14,7 +16,37 @@ const when = byId('when');
 const clock = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const shortDay = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' });
 const fullDay = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-const medicineIcons = ['💊', '🩹', '💧', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⭐', '🌙', '🌿', '🔷', '❤️'];
+const medicineTypes = {
+  oral: { label: '口服药（片剂／胶囊）', icon: '💊', unit: '粒', action: '刚吃了' },
+  patch: { label: '贴剂', icon: '🩹', unit: '贴', action: '刚贴了' },
+  injection: { label: '注射（打针）', icon: '💉', unit: '针', action: '刚打了' },
+  liquid: { label: '口服液', icon: '🧴', unit: '毫升', action: '刚喝了' },
+  eye: { label: '滴眼液', icon: '👁️', unit: '滴', action: '刚滴了' },
+  ear: { label: '滴耳液', icon: '👂', unit: '滴', action: '刚滴了' },
+  nasal: { label: '鼻喷剂', icon: '👃', unit: '次', action: '刚喷了' },
+  topical: { label: '外用涂抹', icon: '🧴', unit: '次', action: '刚涂了' },
+  inhaled: { label: '吸入／雾化', icon: '🌬️', unit: '次', action: '刚用了' },
+  other: { label: '其他', icon: '✚', unit: '次', action: '刚用了' }
+};
+const pillColors = {
+  'pill-pink': { label: '粉色药丸', color: '#db759b', light: '#fce3ed' },
+  'pill-blue': { label: '蓝色药丸', color: '#5a9cd6', light: '#dfedff' },
+  'pill-purple': { label: '紫色药丸', color: '#a180cb', light: '#efe4ff' },
+  'pill-green': { label: '绿色药丸', color: '#64aa85', light: '#e0f4e8' },
+  'pill-orange': { label: '橙色药丸', color: '#e7a05a', light: '#fff0d6' },
+  'pill-red': { label: '红色药丸', color: '#d66c70', light: '#ffe6e4' }
+};
+const iconChoices = [
+  ...Object.entries(pillColors).map(([id, value]) => [id, value.label]),
+  ['💊', '药丸／胶囊'], ['🩹', '贴剂'], ['💉', '注射器'], ['🧴', '药液／药膏'],
+  ['💧', '滴液'], ['👁️', '眼睛'], ['👂', '耳朵'], ['👃', '鼻子'], ['🌬️', '吸入／雾化'],
+  ['🧪', '试管'], ['🌡️', '体温计'], ['🦷', '牙齿'], ['🦴', '骨骼'], ['🫁', '肺部'],
+  ['🫀', '心脏'], ['🧠', '大脑'], ['🛡️', '盾牌'], ['☀️', '太阳'], ['🌙', '月亮'],
+  ['⭐', '星星'], ['🌿', '叶子'], ['🌸', '花朵'], ['🍀', '四叶草'], ['❤️', '爱心'], ['✚', '十字'],
+  ['🔴', '红色圆点（原有）'], ['🟠', '橙色圆点（原有）'], ['🟡', '黄色圆点（原有）'],
+  ['🟢', '绿色圆点（原有）'], ['🔵', '蓝色圆点（原有）'], ['🟣', '紫色圆点（原有）'], ['🔷', '菱形（原有）']
+];
+const medicineIcons = iconChoices.map(([icon]) => icon);
 let calendarMedicineId = '';
 let editingMedicineId = null;
 let editingId = null;
@@ -57,7 +89,7 @@ function validateMedicines(medicines) {
   const ids = new Set();
   return medicines.map(({ id, name, kind, icon, archived }) => {
     if (typeof id !== 'string' || !id || ids.has(id) || typeof name !== 'string' ||
-        !name.trim() || name.length > 60 || !['oral', 'patch'].includes(kind)) {
+        !name.trim() || name.length > 60 || !Object.hasOwn(medicineTypes, kind)) {
       throw new Error('Invalid medicine');
     }
     ids.add(id);
@@ -66,8 +98,8 @@ function validateMedicines(medicines) {
 }
 
 function checkedState(stored) {
-  if (Array.isArray(stored)) return { records: validate(stored), medicines: [] };
-  return { records: validate(stored.records), medicines: validateMedicines(stored.medicines) };
+  if (Array.isArray(stored)) return { records: validate(stored), medicines: [], visits: [] };
+  return { records: validate(stored.records), medicines: validateMedicines(stored.medicines), visits: validateVisits(stored.visits) };
 }
 
 function loadState() {
@@ -79,12 +111,25 @@ function loadMedicines() {
   return loadState().medicines;
 }
 
+function medicineSymbol(icon) {
+  const node = element('span', pillColors[icon] ? '' : icon);
+  node.className = 'medicine-symbol';
+  if (pillColors[icon]) {
+    node.classList.add('pill-symbol');
+    node.style.setProperty('--pill-color', pillColors[icon].color);
+    node.style.setProperty('--pill-light', pillColors[icon].light);
+    node.setAttribute('role', 'img');
+    node.setAttribute('aria-label', pillColors[icon].label);
+  }
+  return node;
+}
+
 function defaultIcon(kind) {
-  return kind === 'patch' ? '🩹' : '💊';
+  return (medicineTypes[kind] ?? medicineTypes.oral).icon;
 }
 
 function unit(medicine) {
-  return medicine?.kind === 'patch' ? '贴' : '粒';
+  return (medicineTypes[medicine?.kind] ?? medicineTypes.oral).unit;
 }
 
 function describe(record, medicines) {
@@ -118,7 +163,7 @@ function renderMedicines(medicines, today, records) {
     quantity.step = '1';
     quantity.value = '1';
     quantity.setAttribute('aria-label', medicine.name + '本次用量（' + unit(medicine) + '）');
-    const button = element('button', medicine.kind === 'patch' ? '刚贴了' : '刚吃了');
+    const button = element('button', (medicineTypes[medicine.kind] ?? medicineTypes.oral).action);
     button.onclick = () => {
       const amount = quantity.valueAsNumber;
       if (!validQuantity(amount)) {
@@ -133,7 +178,8 @@ function renderMedicines(medicines, today, records) {
     controls.append(quantity, button);
     const label = element('div', '');
     label.className = 'medicine-label';
-    const icon = element('button', medicine.icon);
+    const icon = element('button', '');
+    icon.append(medicineSymbol(medicine.icon));
     icon.className = 'medicine-icon';
     icon.setAttribute('aria-label', '修改「' + medicine.name + '」');
     icon.title = '修改药物';
@@ -151,7 +197,9 @@ function renderMedicineManagement(medicines) {
   medicines.forEach((medicine, index) => {
     const row = element('div', '');
     row.className = 'management-row';
-    row.append(element('div', medicine.icon + ' ' + medicine.name + (medicine.archived ? '（已收起）' : '')));
+    const name = element('div', '');
+    name.append(medicineSymbol(medicine.icon), ' ' + medicine.name + (medicine.archived ? '（已收起）' : ''));
+    row.append(name);
     const actions = element('div', '');
     actions.className = 'management-actions';
     const edit = element('button', '修改');
@@ -271,11 +319,59 @@ function render() {
   renderCalendar(grouped, medicines, today);
 
   const history = byId('history');
+  const previousDays = new Map([...history.querySelectorAll('details[data-day]')].map(day => [day.dataset.day, day.open]));
+  const previousFolds = new Map([...history.querySelectorAll('details[data-history-fold]')].map(fold => [fold.dataset.historyFold, fold.open]));
   history.replaceChildren();
-  if (!records.length) history.append(element('p', '记下第一笔后，就能在这里回看啦。'));
-  for (const group of grouped.values()) {
-    const day = element('section', '');
-    day.append(element('h3', fullDay.format(group[0].at)));
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const todayKey = dayKey(today);
+  const yesterdayKey = dayKey(yesterday);
+  const recentDays = new Map([[todayKey, '今天'], [yesterdayKey, '昨天']]);
+  const historyDays = new Map(grouped);
+  for (const dateKey of recentDays.keys()) if (!historyDays.has(dateKey)) historyDays.set(dateKey, []);
+  const olderGroups = [...historyDays].filter(([dateKey]) => dateKey < yesterdayKey);
+  let archive = null;
+  const monthContainers = new Map();
+  if (olderGroups.length) {
+    archive = element('details', '');
+    archive.className = 'history-archive';
+    archive.dataset.historyFold = 'archive';
+    archive.open = previousFolds.get('archive') ?? false;
+    const summary = element('summary', '');
+    summary.append(element('span', '更早记录'), element('small', olderGroups.reduce((count, [, records]) => count + records.length, 0) + ' 条 · 按月份查看'));
+    archive.append(summary);
+    const months = new Map();
+    for (const [dateKey, group] of olderGroups) {
+      const monthKey = dateKey.slice(0, 7);
+      const count = months.get(monthKey) ?? { days: 0, records: 0 };
+      count.days++;
+      count.records += group.length;
+      months.set(monthKey, count);
+    }
+    for (const [monthKey, count] of [...months].sort(([a], [b]) => b.localeCompare(a))) {
+      const month = element('details', '');
+      month.className = 'history-month';
+      month.dataset.historyFold = monthKey;
+      month.open = previousFolds.get(monthKey) ?? false;
+      const summary = element('summary', '');
+      const [year, number] = monthKey.split('-');
+      summary.append(element('span', year + '年' + Number(number) + '月'), element('small', count.days + ' 天 · ' + count.records + ' 条记录'));
+      month.append(summary);
+      archive.append(month);
+      monthContainers.set(monthKey, month);
+    }
+  }
+  for (const [dateKey, group] of [...historyDays].sort(([a], [b]) => b.localeCompare(a))) {
+    const day = element('details', '');
+    day.className = 'history-day';
+    day.dataset.day = dateKey;
+    day.open = previousDays.get(dateKey) ?? recentDays.has(dateKey);
+    const date = new Date(dateKey + 'T12:00:00');
+    const prefix = recentDays.has(dateKey) ? recentDays.get(dateKey) + ' · ' : '';
+    const summary = element('summary', '');
+    summary.append(element('span', prefix + fullDay.format(date)), element('small', group.length + ' 条记录'));
+    day.append(summary);
+    if (!group.length) day.append(element('p', '这一天还没有用药记录。'));
     for (const record of group) {
       const row = element('div', '');
       row.className = 'record';
@@ -296,8 +392,10 @@ function render() {
       row.append(time, actions);
       day.append(row);
     }
-    history.append(day);
+    (dateKey < yesterdayKey ? monthContainers.get(dateKey.slice(0, 7)) : history).append(day);
   }
+  if (archive) history.append(archive);
+  visitsUI.render();
 }
 
 function renderCalendar(grouped, medicines, today) {
@@ -306,7 +404,9 @@ function renderCalendar(grouped, medicines, today) {
   filters.replaceChildren();
   const choices = [{ id: '', name: '全部药物', icon: '' }, ...medicines.values()];
   for (const medicine of choices) {
-    const filter = element('button', (medicine.icon + ' ' + medicine.name).trim() + (medicine.archived ? '（已收起）' : ''));
+    const filter = element('button', '');
+    if (medicine.icon) filter.append(medicineSymbol(medicine.icon), ' ');
+    filter.append(medicine.name + (medicine.archived ? '（已收起）' : ''));
     filter.setAttribute('aria-pressed', String(calendarMedicineId === medicine.id));
     filter.onclick = () => {
       calendarMedicineId = medicine.id;
@@ -361,7 +461,8 @@ function renderCalendar(grouped, medicines, today) {
       const medicine = medicines.get(id);
       const label = (medicine?.name ?? '未分类') + ' ' + count + ' 次';
       labels.push(label);
-      const badge = element('small', (medicine?.icon ?? '•') + count);
+      const badge = element('small', '');
+      badge.append(medicineSymbol(medicine?.icon ?? '•'), String(count));
       badge.title = label;
       badges.append(badge);
     }
@@ -432,14 +533,46 @@ byId('record-medicine').onchange = updateQuantityField;
 const medicineEditor = byId('medicine-editor');
 const iconPicker = byId('medicine-icon');
 const kindPicker = byId('medicine-kind');
+for (const [kind, type] of Object.entries(medicineTypes)) {
+  const option = element('option', type.label);
+  option.value = kind;
+  kindPicker.append(option);
+}
 const autoIcon = element('option', '按类型自动选择');
 autoIcon.value = '';
 iconPicker.append(autoIcon);
-for (const icon of medicineIcons) {
-  const option = element('option', icon);
+for (const [icon, label] of iconChoices) {
+  const option = element('option', (pillColors[icon] ? '💊' : icon) + ' ' + label);
   option.value = icon;
   iconPicker.append(option);
 }
+
+function renderIconPreview() {
+  const grid = byId('medicine-icon-grid');
+  grid.replaceChildren();
+  for (const [value, label] of [['', '按类型自动选择'], ...iconChoices]) {
+    const button = element('button', '');
+    button.type = 'button';
+    button.className = 'icon-choice';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(iconPicker.value === value));
+    button.append(medicineSymbol(value || defaultIcon(kindPicker.value)));
+    if (!value) {
+      const marker = element('small', '↻');
+      marker.setAttribute('aria-hidden', 'true');
+      button.append(marker);
+    }
+    button.onclick = () => {
+      iconPicker.value = value;
+      renderIconPreview();
+      grid.children[[['', '按类型自动选择'], ...iconChoices].findIndex(([id]) => id === value)].focus();
+    };
+    grid.append(button);
+  }
+}
+iconPicker.onchange = renderIconPreview;
+kindPicker.onchange = renderIconPreview;
 
 function openMedicineEditor(medicine) {
   editingMedicineId = medicine?.id ?? null;
@@ -449,6 +582,7 @@ function openMedicineEditor(medicine) {
   kindPicker.value = medicine?.kind ?? 'oral';
   kindPicker.disabled = Boolean(medicine);
   iconPicker.value = medicine?.icon ?? '';
+  renderIconPreview();
   byId('medicine-status').textContent = '';
   medicineEditor.showModal();
 }
@@ -528,7 +662,7 @@ byId('edit-form').onsubmit = async event => {
 const backupStatus = byId('backup-status');
 byId('export').onclick = () => {
   try {
-    const blob = new Blob([JSON.stringify({ version: 2, ...loadState() }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 3, ...loadState() }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = element('a', '');
     link.href = url;
@@ -549,10 +683,10 @@ byId('file').onchange = async event => {
   if (!file) return;
   try {
     const backup = JSON.parse(await file.text());
-    if (![1, 2].includes(backup?.version)) throw new Error('Invalid backup version');
+    if (![1, 2, 3].includes(backup?.version)) throw new Error('Invalid backup version');
     const imported = validate(backup.records);
-    const importedMedicines = backup.version === 2 ? validateMedicines(backup.medicines) : [];
-    await mergeBackup(imported, importedMedicines, backupStatus);
+    const importedMedicines = backup.version >= 2 ? validateMedicines(backup.medicines) : [];
+    await mergeBackup(imported, importedMedicines, backupStatus, backup.version >= 3 ? validateVisits(backup.visits) : []);
   } catch {
     backupStatus.textContent = '无法导入。请选择「吃药服务」导出的 JSON 备份。';
   } finally {
@@ -560,7 +694,7 @@ byId('file').onchange = async event => {
   }
 };
 
-async function mergeBackup(records, medicines, status) {
+async function mergeBackup(records, medicines, status, visits = []) {
   return update(state => {
     const medicineIds = new Set(state.medicines.map(item => item.id));
     const merged = [...state.medicines, ...medicines.filter(item => !medicineIds.has(item.id))];
@@ -569,7 +703,8 @@ async function mergeBackup(records, medicines, status) {
       throw new Error('Missing medicine');
     }
     const recordIds = new Set(state.records.map(item => item.id));
-    return { medicines: merged, records: [...state.records, ...records.filter(item => !recordIds.has(item.id))] };
+    const visitIds = new Set((state.visits ?? []).map(item => item.id));
+    return { ...state, medicines: merged, records: [...state.records, ...records.filter(item => !recordIds.has(item.id))], visits: [...(state.visits ?? []), ...visits.filter(item => !visitIds.has(item.id))] };
   }, '已合并到云端，重复记录已跳过。', status);
 }
 
@@ -597,10 +732,12 @@ async function refreshJournal() {
 
 async function showAccount(session) {
   const user = session?.user ?? null;
+  emailUI.setUser(user);
   if (signedInUser?.id === user?.id && cloudState) return;
   const generation = ++accountGeneration;
   signedInUser = user;
   cloudState = null;
+  visitsUI.reset();
   byId('journal').hidden = true;
   editor.close();
   medicineEditor.close();
@@ -653,6 +790,9 @@ byId('migrate-local').onclick = async () => {
     byId('sync-state').textContent = '本机旧记录读取失败，可使用导出的 JSON 备份导入。';
   }
 };
+const visitsUI = initVisits({ loadState, update });
+const emailUI = initEmailAuth({ client, onSession:showAccount, waitForWrites:()=>writeQueue, getCurrentUser:()=>signedInUser });
+
 client.auth.onAuthStateChange((_event, session) => {
   setTimeout(() => showAccount(session), 0);
 });

@@ -12,7 +12,8 @@ let accountGeneration = 0;
 const key = 'medicine-service.v1';
 const byId = id => document.getElementById(id);
 const editor = byId('editor');
-const when = byId('when');
+const whenDate = byId('when-date');
+const whenTime = byId('when-time');
 const clock = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const shortDay = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' });
 const fullDay = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
@@ -516,8 +517,10 @@ function openEditor(record) {
   picker.value = record?.medicineId ?? (record ? '' : medicines.find(item => !item.archived)?.id ?? '');
   byId('quantity').value = record?.quantity ?? 1;
   updateQuantityField();
-  when.max = timeField(new Date());
-  when.value = timeField(record ? new Date(record.at) : new Date());
+  const initial = record ? new Date(record.at) : new Date();
+  whenDate.max = dayKey(new Date());
+  whenDate.value = dayKey(initial);
+  whenTime.value = clock.format(initial);
   editor.showModal();
 }
 
@@ -625,9 +628,9 @@ byId('manual').onclick = () => openEditor();
 byId('cancel').onclick = () => editor.close();
 byId('edit-form').onsubmit = async event => {
   event.preventDefault();
-  const date = new Date(when.value);
+  const date = new Date(whenDate.value + 'T' + (whenTime.value || '00:00'));
   const status = byId('edit-status');
-  if (!Number.isFinite(date.getTime()) || date.getTime() > Date.now() || timeField(date) !== when.value) {
+  if (!whenDate.value || !whenTime.value || !Number.isFinite(date.getTime()) || date.getTime() > Date.now()) {
     status.textContent = '请选择一个有效的服药时间。';
     return;
   }

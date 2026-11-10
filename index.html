@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#fff6f1">
 <title>吃药服务</title>
-<link rel="stylesheet" href="style.css?v=20261111-1">
-<script type="module" src="app.js?v=20261111-1"></script>
+<link rel="stylesheet" href="style.css?v=20261111-2">
+<script type="module" src="app.js?v=20261111-2"></script>
 </head>
 <body>
 <main>
@@ -140,8 +140,12 @@
 </div>
 <label for="when-date">服药日期</label>
 <input id="when-date" type="date" required>
-<label for="when-time">服药时间</label>
-<input id="when-time" type="time" step="60" required>
+<label for="when-hour">服药时间</label>
+<div class="time-row">
+<select id="when-hour" required></select>
+<span class="time-sep">:</span>
+<select id="when-minute" required></select>
+</div>
 <div class="actions"><button type="button" id="cancel">取消</button><button class="primary" type="submit">保存</button></div>
 <p role="status" id="edit-status"></p>
 </form>

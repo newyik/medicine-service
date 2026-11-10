@@ -13,7 +13,21 @@ const key = 'medicine-service.v1';
 const byId = id => document.getElementById(id);
 const editor = byId('editor');
 const whenDate = byId('when-date');
-const whenTime = byId('when-time');
+const whenHour = byId('when-hour');
+const whenMinute = byId('when-minute');
+// 初始化"时/分"下拉框
+(function initTimeOptions() {
+  const fill = (el, count, pad) => {
+    if (!el) return;
+    for (let i = 0; i < count; i++) {
+      const v = pad ? String(i).padStart(2, '0') : String(i);
+      el.append(new Option(v, v));
+    }
+  };
+  fill(document.getElementById('when-hour'), 24, true);
+  fill(document.getElementById('when-minute'), 60, true);
+})();
+
 const clock = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const shortDay = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' });
 const fullDay = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
@@ -520,7 +534,9 @@ function openEditor(record) {
   const initial = record ? new Date(record.at) : new Date();
   whenDate.max = dayKey(new Date());
   whenDate.value = dayKey(initial);
-  whenTime.value = clock.format(initial);
+  const [hh, mm] = clock.format(initial).split(':');
+  whenHour.value = hh;
+  whenMinute.value = mm;
   editor.showModal();
 }
 
@@ -628,9 +644,9 @@ byId('manual').onclick = () => openEditor();
 byId('cancel').onclick = () => editor.close();
 byId('edit-form').onsubmit = async event => {
   event.preventDefault();
-  const date = new Date(whenDate.value + 'T' + (whenTime.value || '00:00'));
+  const date = new Date(whenDate.value + 'T' + whenHour.value + ':' + whenMinute.value);
   const status = byId('edit-status');
-  if (!whenDate.value || !whenTime.value || !Number.isFinite(date.getTime()) || date.getTime() > Date.now()) {
+  if (!whenDate.value || !whenHour.value || !whenMinute.value || !Number.isFinite(date.getTime()) || date.getTime() > Date.now()) {
     status.textContent = '请选择一个有效的服药时间。';
     return;
   }

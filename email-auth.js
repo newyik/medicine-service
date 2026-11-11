@@ -23,8 +23,8 @@ export function initEmailAuth({ client, onSession, waitForWrites, getCurrentUser
       $('email-login-status').textContent='';$('email-password-status').textContent='';
     }
     $('email-login-toggle').hidden=Boolean(user);
-    $('email-login-panel').hidden=true;
-    $('email-login-toggle').setAttribute('aria-expanded','false');
+    $('email-login-panel').hidden=Boolean(user);
+    $('email-login-toggle').setAttribute('aria-expanded',String(!user));
     if(localPreview)$('email-preview-note').hidden=true;
     $('email-account-panel').hidden=!user;
     $('email-account-value').textContent=user?.email || '当前账号没有可用邮箱，请继续使用 GitHub 登录。';

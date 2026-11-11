@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#fff6f1">
 <title>吃药服务</title>
-<link rel="stylesheet" href="style.css?v=20261111-2">
-<script type="module" src="app.js?v=20261111-2"></script>
+<link rel="stylesheet" href="style.css?v=20261111-login-3">
+<script type="module" src="app.js?v=20261111-login-3"></script>
 </head>
-<body>
+<body class="signed-out">
 <main>
 <header class="hero">
 <div>
 <p class="eyebrow"><span aria-hidden="true">✦</span> 我的用药小本本</p>
 <div class="hero-title-row"><h1>吃药服务</h1><a class="visit-entry-link" id="visit-link" href="#visits">🏥 看病记录 <span aria-hidden="true">↗</span></a></div>
-<p>吃了几粒、贴了几贴，顺手记一笔。</p>
+<p class="journal-tagline">吃了几粒、贴了几贴，顺手记一笔。</p><div class="login-story"><h2>把照顾自己，<br>变成一个小习惯。</h2><p>用药、预约、每一次就诊，<br>都在自己的小本本里安心记好。</p><div class="login-features"><span>用药记录</span><span>就诊日历</span><span>多端同步</span></div></div>
 </div>
 <svg class="hero-art" viewBox="0 0 188 148" aria-hidden="true" focusable="false">
   <ellipse cx="96" cy="77" rx="71" ry="59" fill="#fbe0e6"/>
@@ -35,7 +35,7 @@
     <path d="M127 103q3 4 6 0" fill="none" stroke="#633f61" stroke-width="1.7" stroke-linecap="round"/>
   </g>
 </svg>
-</header>
+<img class="login-illustration" src="assets/login-notebook.svg" alt="" width="480" height="380"><p class="login-story-foot">认真记录，也好好照顾自己。</p></header>
 <section class="card appointment-reminders" id="appointment-reminders" hidden aria-label="预约提醒" aria-live="polite"></section>
 <p id="appointment-action-status" role="status"></p>
 <div id="journal" hidden>
@@ -84,10 +84,10 @@
 <section class="card"><div class="visit-tabs" role="group" aria-label="按就诊状态筛选"><button id="visits-tab-completed" aria-pressed="true">就诊记录</button><button id="visits-tab-planned" aria-pressed="false">预约／复诊</button></div><label for="visits-filter" class="visually-hidden">搜索就诊记录</label><input type="search" id="visits-filter" placeholder="搜索医院、科室或记录关键词"><div class="visit-list-heading"><h3 id="visit-list-title">预约与复诊安排</h3><button id="visit-calendar-clear" hidden>查看所有日期</button></div><div id="visits-list"></div><details id="cancelled-appointments" hidden></details></section>
 </section>
 <section class="card account-card" aria-labelledby="account-title">
-<h2 id="account-title">☁️ 我的云端小本本</h2>
-<p id="account-name">登录后，在不同设备继续记录</p>
+<p class="login-kicker">YOUR PERSONAL HEALTH JOURNAL</p><h2 id="account-title">☁️ 我的云端小本本</h2>
+<p id="account-name">登录账号，在不同设备继续记录。</p><div class="login-separator">或使用已有账号</div>
 <div class="record-actions">
-<button id="login" class="primary">GitHub 登录</button>
+<button id="login" class="primary">使用 GitHub 登录</button>
 <button id="email-login-toggle" type="button" aria-expanded="false" aria-controls="email-login-panel">邮箱登录</button>
 <button id="logout" hidden>退出登录</button>
 <button id="sync-retry">重新同步</button>
@@ -95,7 +95,7 @@
 </div>
 <p id="sync-state" role="status">正在连接账号服务…</p>
 <p id="email-preview-note" class="email-preview-note" hidden>🧪 本地仅模拟邮箱登录与密码设置，不修改真实账号。请使用演示密码，勿填写真实密码。</p>
-<section id="email-login-panel" class="email-login-panel" hidden><form id="email-login-form"><label for="email-login-address">邮箱</label><input id="email-login-address" type="email" autocomplete="username" required placeholder="填写账号邮箱"><label for="email-login-password">密码</label><input id="email-login-password" type="password" autocomplete="current-password" required placeholder="小本本的邮箱登录密码"><div class="actions"><button id="email-login-submit" class="primary" type="submit">用邮箱登录</button></div><p id="email-login-status" role="status"></p></form><p class="field-hint">第一次为已有记录开通邮箱登录？先用 GitHub 进入原账号，再设置邮箱密码。</p><div class="email-login-help"><button type="button" id="email-use-github">先用 GitHub 开通邮箱登录</button><button type="button" id="email-forgot">忘记密码？用 GitHub 进入后重设</button></div></section>
+<section id="email-login-panel" class="email-login-panel" hidden><form id="email-login-form"><label for="email-login-address">邮箱</label><input id="email-login-address" type="email" autocomplete="username" required placeholder="填写账号邮箱"><label for="email-login-password">密码</label><input id="email-login-password" type="password" autocomplete="current-password" required placeholder="小本本的邮箱登录密码"><div class="actions"><button id="email-login-submit" class="primary" type="submit">登录小本本 <span aria-hidden="true">↗</span></button></div><p id="email-login-status" role="status"></p></form><details class="login-help-details"><summary>第一次使用邮箱登录，或忘记密码？</summary><p class="field-hint">第一次为已有记录开通邮箱登录？先用 GitHub 进入原账号，再设置邮箱密码。</p><div class="email-login-help"><button type="button" id="email-use-github">先用 GitHub 开通邮箱登录</button><button type="button" id="email-forgot">忘记密码？用 GitHub 进入后重设</button></div></details></section>
 <details id="email-account-panel" class="email-account-panel" hidden><summary>✉️ 邮箱登录设置</summary><p>当前账号邮箱</p><p id="email-account-value" class="email-account-value"></p><p id="email-method-hint" class="field-hint"></p><form id="email-password-form"><label for="email-new-password">设置邮箱登录密码</label><input id="email-new-password" type="password" autocomplete="new-password" minlength="8" required placeholder="至少 8 位，与 GitHub 密码无关"><label for="email-confirm-password">再输入一次密码</label><input id="email-confirm-password" type="password" autocomplete="new-password" minlength="8" required><div class="actions"><button id="email-password-save" class="primary" type="submit">保存邮箱密码</button></div><p id="email-password-status" role="status"></p></form></details>
 </section>
 </main>

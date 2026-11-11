@@ -1,7 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
 import { initVisits, validateVisits } from './visits.js?v=20261108-1';
-import { initEmailAuth } from './email-auth.js?v=20261108-1';
+import { initEmailAuth } from './email-auth.js?v=20261111-login-3';
 
 const client = createClient(cloudConfig.url, cloudConfig.publicKey);
 let signedInUser = null;
@@ -751,6 +751,8 @@ async function refreshJournal() {
 
 async function showAccount(session) {
   const user = session?.user ?? null;
+  document.body.classList.toggle('signed-out', !user);
+  byId('account-title').textContent = user ? '☁️ 我的云端小本本' : '欢迎回来';
   emailUI.setUser(user);
   if (signedInUser?.id === user?.id && cloudState) return;
   const generation = ++accountGeneration;
@@ -762,8 +764,8 @@ async function showAccount(session) {
   medicineEditor.close();
   byId('login').hidden = Boolean(user);
   byId('logout').hidden = !user;
-  byId('account-name').textContent = user ? '已登录 · ' + (user.user_metadata.user_name || user.email || '我的账号') : '登录后，在不同设备继续记录';
-  byId('sync-state').textContent = user ? '正在读取云端记录…' : '用 GitHub 登录，查看自己的用药小本本。';
+  byId('account-name').textContent = user ? '已登录 · ' + (user.user_metadata.user_name || user.email || '我的账号') : '登录账号，在手机和电脑继续记录。';
+  byId('sync-state').textContent = user ? '正在读取云端记录…' : '你的记录仅在登录后可见。';
   if (!user) return;
   try {
     const { error } = await client.from('medicine_journals').upsert(

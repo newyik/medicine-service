@@ -5,11 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#fff6f1">
 <title>吃药服务</title>
-<link rel="stylesheet" href="style.css?v=20261111-login-3">
-<script type="module" src="app.js?v=20261111-login-3"></script>
+<link rel="stylesheet" href="style.css?v=20261113-session-1">
+<script type="module" src="app.js?v=20261113-session-1"></script>
 </head>
-<body class="signed-out">
-<main>
+<body>
+<div class="session-startup" id="session-startup">
+  <p id="session-startup-status" role="status">正在确认登录状态…</p>
+  <button id="session-startup-retry" type="button" hidden>重试</button>
+</div>
+<main id="app-main" hidden>
 <header class="hero">
 <div>
 <p class="eyebrow"><span aria-hidden="true">✦</span> 我的用药小本本</p>

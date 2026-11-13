@@ -128,6 +128,15 @@ button:disabled { opacity: .4; cursor: default; }
 }
 
 [hidden] { display: none !important; }
+.session-startup {
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
 #journal { display: contents; }
 .account-card { grid-column: 1 / -1; }
 

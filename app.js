@@ -754,6 +754,8 @@ async function showAccount(session) {
   document.body.classList.toggle('signed-out', !user);
   byId('account-title').textContent = user ? '☁️ 我的云端小本本' : '欢迎回来';
   emailUI.setUser(user);
+  byId('session-startup').hidden = true;
+  byId('app-main').hidden = false;
   if (signedInUser?.id === user?.id && cloudState) return;
   const generation = ++accountGeneration;
   signedInUser = user;
@@ -814,14 +816,27 @@ byId('migrate-local').onclick = async () => {
 const visitsUI = initVisits({ loadState, update });
 const emailUI = initEmailAuth({ client, onSession:showAccount, waitForWrites:()=>writeQueue, getCurrentUser:()=>signedInUser });
 
-client.auth.onAuthStateChange((_event, session) => {
-  setTimeout(() => showAccount(session), 0);
+client.auth.onAuthStateChange((event, session) => {
+  if (event !== 'INITIAL_SESSION') setTimeout(() => showAccount(session), 0);
 });
-client.auth.getSession().then(({ data, error }) => {
-  if (error) byId('sync-state').textContent = '登录状态读取失败，请重试。';
-  else showAccount(data.session);
-});
-window.addEventListener('focus', refreshJournal);
-document.addEventListener('visibilitychange', refreshJournal);
-setInterval(refreshJournal, 20000);
 
+async function restoreSession() {
+  const status = byId('session-startup-status');
+  const retry = byId('session-startup-retry');
+  const generation = accountGeneration;
+  status.textContent = '正在确认登录状态…';
+  retry.hidden = true;
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (generation !== accountGeneration) return;
+    if (error) throw error;
+    await showAccount(data.session);
+  } catch {
+    if (generation !== accountGeneration) return;
+    status.textContent = '暂时无法读取登录状态，请检查网络后重试。';
+    retry.hidden = false;
+  }
+}
+
+byId('session-startup-retry').onclick = restoreSession;
+restoreSession();

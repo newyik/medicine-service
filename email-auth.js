@@ -1,10 +1,10 @@
 export function emailAuthMessage(error) {
-  if (['invalid_credentials','email_not_confirmed'].includes(error?.code)) return error.code==='email_not_confirmed' ? '这个邮箱尚未完成验证。已有 GitHub 账号可以先用 GitHub 登录。' : '邮箱或密码不正确。已有 GitHub 记录？请先用 GitHub 登录，在账号里设置邮箱密码。';
+  if (['invalid_credentials','email_not_confirmed'].includes(error?.code)) return error.code==='email_not_confirmed' ? '这个邮箱尚未完成验证。' : '邮箱或密码不正确，请检查后重试。';
   if (error?.code==='same_password') return '这个密码和当前密码相同，邮箱登录已可使用。';
   if (error?.code==='weak_password') return '密码不符合要求，请使用更长、更复杂的密码。';
-  if (error?.code==='reauthentication_needed' || error?.code==='session_not_found') return '请先重新用 GitHub 登录，再设置邮箱密码。';
+  if (error?.code==='reauthentication_needed' || error?.code==='session_not_found') return '请先重新登录，再设置邮箱密码。';
   if (error?.status===429 || error?.code==='over_request_rate_limit') return '尝试次数较多，请稍后再试。';
-  return '操作暂时未完成，请检查网络后重试。GitHub 登录仍可使用。';
+  return '操作暂时未完成，请检查网络后重试。';
 }
 export function validateEmailPassword(password, confirmation) {
   if (password.length < 8) return '请设置至少 8 位的密码。';
@@ -22,20 +22,15 @@ export function initEmailAuth({ client, onSession, waitForWrites, getCurrentUser
       generation++;currentId=user?.id ?? null;loginForm.reset();passwordForm.reset();
       $('email-login-status').textContent='';$('email-password-status').textContent='';
     }
-    $('email-login-toggle').hidden=Boolean(user);
     $('email-login-panel').hidden=Boolean(user);
-    $('email-login-toggle').setAttribute('aria-expanded',String(!user));
-    if(localPreview)$('email-preview-note').hidden=true;
+    if(localPreview)$('email-preview-note').hidden=Boolean(user);
     $('email-account-panel').hidden=!user;
-    $('email-account-value').textContent=user?.email || '当前账号没有可用邮箱，请继续使用 GitHub 登录。';
+    $('email-account-value').textContent=user?.email || '当前账号没有可用邮箱。';
     $('email-password-save').disabled=!user?.email;
     passwordForm.hidden=!user?.email;
-    $('email-method-hint').textContent = user?.email ? '为上方邮箱设置小本本登录密码。设置后，GitHub 和邮箱两种方式都能进入当前账号，原有记录继续保留。' : '请继续使用 GitHub 登录当前账号。';
+    $('email-method-hint').textContent = user?.email ? '可在这里更新当前账号的邮箱登录密码。' : '当前账号无法设置邮箱密码。';
   }
-  $('email-login-toggle').onclick=()=>{const expanded=$('email-login-toggle').getAttribute('aria-expanded')!=='true';$('email-login-panel').hidden=!expanded;$('email-login-toggle').setAttribute('aria-expanded',String(expanded));if(localPreview)$('email-preview-note').hidden=!expanded;if(expanded)$('email-login-address').focus();};
   $('email-account-panel').ontoggle=()=>{if(localPreview)$('email-preview-note').hidden=!$('email-account-panel').open&&$('email-login-panel').hidden;};
-  $('email-use-github').onclick=()=>$('login').click();
-  $('email-forgot').onclick=()=>$('login').click();
   loginForm.onsubmit=async event=>{
     event.preventDefault();
     const email=$('email-login-address').value.trim();const password=$('email-login-password').value;
@@ -69,7 +64,7 @@ export function initEmailAuth({ client, onSession, waitForWrites, getCurrentUser
       if(error){$('email-password-status').textContent=emailAuthMessage(error);return;}
       if(data?.user?.id!==user.id)throw new Error('Account changed');
       passwordForm.reset();
-      $('email-password-status').textContent=localPreview?'模拟设置成功。真实账号和密码未改动。':'邮箱密码已设置。以后可用当前邮箱＋密码登录，GitHub 登录也继续保留。';
+      $('email-password-status').textContent=localPreview?'模拟设置成功。真实账号和密码未改动。':'邮箱密码已保存。';
     }catch{if(ownGeneration===generation)$('email-password-status').textContent='设置尚未完成。请重新登录当前账号后再试。';}
     finally{$('email-new-password').value='';$('email-confirm-password').value='';if(ownGeneration===generation)$('email-password-save').disabled=false;}
   };

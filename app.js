@@ -1,7 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
 import { initVisits, validateVisits } from './visits.js?v=20261108-1';
-import { initEmailAuth } from './email-auth.js?v=20261111-login-3';
+import { initEmailAuth } from './email-auth.js?v=20261114-email-1';
 
 const client = createClient(cloudConfig.url, cloudConfig.publicKey);
 let signedInUser = null;
@@ -767,7 +767,6 @@ async function showAccount(session) {
   byId('journal').hidden = true;
   editor.close();
   medicineEditor.close();
-  byId('login').hidden = Boolean(user);
   byId('logout').hidden = !user;
   byId('account-name').textContent = user ? '已登录 · ' + (user.user_metadata.user_name || user.email || '我的账号') : '登录账号，在手机和电脑继续记录。';
   byId('sync-state').textContent = user ? '正在读取云端记录…' : '你的记录仅在登录后可见。';
@@ -808,12 +807,6 @@ async function showAccount(session) {
   revealApp();
 }
 
-byId('login').onclick = async () => {
-  const { error } = await client.auth.signInWithOAuth({
-    provider: 'github', options: { redirectTo: location.origin + location.pathname }
-  });
-  if (error) byId('sync-state').textContent = '登录未完成，请重试。';
-};
 byId('logout').onclick = async () => {
   await writeQueue;
   const { error } = await client.auth.signOut({ scope: 'local' });

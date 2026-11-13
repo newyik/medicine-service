@@ -749,13 +749,16 @@ async function refreshJournal() {
   }
 }
 
+function revealApp() {
+  byId('session-startup').hidden = true;
+  byId('app-main').hidden = false;
+}
+
 async function showAccount(session) {
   const user = session?.user ?? null;
   document.body.classList.toggle('signed-out', !user);
   byId('account-title').textContent = user ? '☁️ 我的云端小本本' : '欢迎回来';
   emailUI.setUser(user);
-  byId('session-startup').hidden = true;
-  byId('app-main').hidden = false;
   if (signedInUser?.id === user?.id && cloudState) return;
   const generation = ++accountGeneration;
   signedInUser = user;
@@ -768,7 +771,14 @@ async function showAccount(session) {
   byId('logout').hidden = !user;
   byId('account-name').textContent = user ? '已登录 · ' + (user.user_metadata.user_name || user.email || '我的账号') : '登录账号，在手机和电脑继续记录。';
   byId('sync-state').textContent = user ? '正在读取云端记录…' : '你的记录仅在登录后可见。';
-  if (!user) return;
+  if (!user) {
+    revealApp();
+    return;
+  }
+  byId('app-main').hidden = true;
+  byId('session-startup-status').textContent = '正在读取云端记录…';
+  byId('session-startup-retry').hidden = true;
+  byId('session-startup').hidden = false;
   try {
     const { error } = await client.from('medicine_journals').upsert(
       { user_id: user.id }, { onConflict: 'user_id', ignoreDuplicates: true }
@@ -780,11 +790,22 @@ async function showAccount(session) {
     byId('journal').hidden = false;
     render();
     byId('sync-state').textContent = '已同步 · ' + clock.format(Date.now());
+  } catch {
+    if (generation !== accountGeneration) return;
+    cloudState = null;
+    byId('journal').hidden = true;
+    byId('session-startup-status').textContent = '暂时无法读取云端记录，请检查网络后重试。';
+    byId('session-startup-retry').hidden = false;
+    return;
+  }
+  byId('migrate-local').hidden = true;
+  try {
     const local = checkedState(JSON.parse(localStorage.getItem(key) ?? '[]'));
     byId('migrate-local').hidden = !local.records.length && !local.medicines.length;
   } catch {
-    if (generation === accountGeneration) byId('sync-state').textContent = '云端读取失败，请点「重新同步」重试。';
+    // A local backup can still be imported after the journal opens.
   }
+  revealApp();
 }
 
 byId('login').onclick = async () => {

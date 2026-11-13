@@ -469,3 +469,10 @@ dialog::backdrop{background:#3e294355;backdrop-filter:blur(3px);animation:fade .
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 .illustrated-card::before{animation:floaty 8s ease-in-out infinite}
+
+/* The journal opens as a complete page after its records are ready. */
+body:not(.signed-out) #app-main > *,
+#journal > *,
+body:not(.signed-out) .hero h1 {
+  animation: none;
+}

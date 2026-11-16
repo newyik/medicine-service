@@ -59,7 +59,7 @@ export function initVisits({ loadState, update }) {
     $('journal').hidden = isVisit || !signedIn;
     document.body.classList.toggle('visits-view', isVisit);
     $('visit-link').href = isVisit ? '#' : '#visits';
-    $('visit-link').textContent = isVisit ? '💊 用药记录 ↗' : '🏥 看病记录 ↗';
+    $('visit-link').textContent = isVisit ? '‹ 用药记录' : '看病记录 ›';
     document.title = isVisit ? '看病记录 · 吃药服务' : '吃药服务';
   }
   window.addEventListener('hashchange', () => { route(); window.scrollTo({ top:0, behavior:'instant' }); });

@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
-import { initVisits, validateVisits } from './visits.js?v=20261108-1';
+import { initVisits, validateVisits } from './visits.js?v=20261117-redesign';
 import { initEmailAuth } from './email-auth.js?v=20261114-email-1';
 
 const client = createClient(cloudConfig.url, cloudConfig.publicKey);
@@ -161,8 +161,11 @@ function renderMedicines(medicines, today, records) {
     const total = today.reduce((sum, record) => record.medicineId === medicine.id ? sum + record.quantity : sum, 0);
     const row = element('div', '');
     row.className = 'record';
-    const name = element('div', medicine.name + ' · 今天 ' + total + ' ' + unit(medicine));
+    const name = element('div', medicine.name);
     name.className = 'med-name';
+    const todayTotal = element('span', ' · 今天 ' + total + ' ' + unit(medicine));
+    todayTotal.className = 'med-today';
+    name.append(todayTotal);
     const last = records.find(record => record.medicineId === medicine.id);
     const recent = element('small', last
       ? '上次 ' + dayKey(new Date(last.at)) + ' ' + clock.format(last.at) + ' · ' + last.quantity + ' ' + unit(medicine)
@@ -768,6 +771,7 @@ async function showAccount(session) {
   editor.close();
   medicineEditor.close();
   byId('logout').hidden = !user;
+  byId('account-title').textContent = user ? '账号与同步' : '登录';
   byId('account-name').textContent = user ? '已登录 · ' + (user.user_metadata.user_name || user.email || '我的账号') : '登录账号，在手机和电脑继续记录。';
   byId('sync-state').textContent = user ? '正在读取云端记录…' : '你的记录仅在登录后可见。';
   if (!user) {

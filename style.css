@@ -480,3 +480,11 @@ dialog[open]::backdrop { animation: fade .2s ease-out; }
 .session-startup { min-height: 100svh; display: grid; align-content: center; justify-items: center; gap: 4px; padding: 24px; text-align: center; color: var(--ink-2); background: var(--bg); }
 .session-startup img { width: 94px; height: auto; opacity: .9; }
 .session-startup p { font-size: .875rem; }
+
+/* ── iPhone 应用里（外壳会给 <html> 加 native-ios）：顶栏和页面切换由原生导航栏、标签栏代替 ── */
+.native-ios { -webkit-tap-highlight-color: transparent; }
+.native-ios body:not(.signed-out) .hero { display: none; }
+.native-ios main { padding-top: 8px; }
+.native-ios .visits-compact h2 { display: none; }
+.native-ios .card { box-shadow: none; }
+.native-ios button, .native-ios summary { -webkit-user-select: none; user-select: none; }

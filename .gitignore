@@ -1,0 +1,4 @@
+# 外壳构建产物
+apps/*/build/
+*.ipa
+*.app

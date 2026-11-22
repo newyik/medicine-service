@@ -1,0 +1,99 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  color: #302831;
+  background: #f4f1ee;
+  --muted: #665b65;
+  --border: #e3dce1;
+  --accent: #ece2ea;
+  --surface: #fffcfa;
+  --field: #f8f4f6;
+  --plum: #68465f;
+}
+body::before, .illustrated-card::before, .card::after { content: none !important; }
+main > *, #journal > *, #visits-page > *, .hero h1, .hero-art,
+.login-story h2, .login-illustration, .login-features > *, .section-icon,
+details[open] > :not(summary), dialog[open], dialog::backdrop {
+  animation: none !important;
+}
+body:not(.signed-out) .hero {
+  background: #eee5eb;
+  border: 1px solid #e0d3dc;
+  border-radius: 16px;
+  box-shadow: none;
+}
+body:not(.signed-out) .hero .eyebrow { color: var(--plum); font-weight: 600; }
+body:not(.signed-out) .hero .hero-art { opacity: .62; width: 68px; }
+.hero-title-row h1 { font-weight: 680; letter-spacing: -.025em; }
+.hero .visit-entry-link {
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--plum);
+  border-color: #dcd0d9;
+  box-shadow: none;
+  font-size: .9rem;
+  min-height: 40px;
+  padding: 8px 13px;
+}
+.card, dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 2px 6px #392b3610;
+}
+.card:hover { box-shadow: 0 2px 6px #392b3610; }
+dialog { box-shadow: 0 18px 60px #392b3633; }
+dialog::backdrop { background: #30263155; backdrop-filter: none; }
+h2 { font-weight: 650; letter-spacing: -.012em; }
+.section-icon, .section-icon.peach, .section-icon.lilac, .medicine-icon {
+  background: #f1e9ee;
+  border-radius: 8px;
+}
+.calendar-notebook > h2, .backup-notebook > h2 { padding-right: 0; }
+button, input, select, textarea, #calendar-filters button, .visit-tabs button {
+  border-radius: 8px;
+  background-color: var(--field);
+  border-color: var(--border);
+}
+button:active:not(:disabled), button.primary:hover:not(:disabled),
+.calendar-day:hover, .visit-calendar-day:hover, .record:hover,
+.visit-entry:hover, .hospital-result:hover, .visit-entry-link:hover, .back-link:hover {
+  transform: none;
+}
+button.primary::after { content: none; }
+button.primary, .signed-out #email-login-submit {
+  background: var(--plum);
+  color: #fff;
+  border-color: var(--plum);
+  box-shadow: none;
+  font-weight: 620;
+}
+button.primary:hover:not(:disabled), .signed-out #email-login-submit:hover { background: #56374f; box-shadow: none; }
+.med-controls button { background: #f0e7ed; color: #56374f; }
+.calendar-day, .visit-calendar-day { background: #fbf8fa; }
+.calendar-day[aria-pressed="true"], .visit-calendar-day[aria-pressed="true"],
+#calendar-filters button[aria-pressed="true"], .visit-tabs button[aria-pressed="true"] {
+  background: #e9dde7;
+  color: #4b3046;
+  border-color: #a48b9f;
+}
+.calendar-badges small, .calendar-day[aria-pressed="true"] .calendar-badges small {
+  background: #e8dce6;
+}
+.calendar-nav h3, .calendar-day, .visit-calendar-day, .med-controls input {
+  font-variant-numeric: tabular-nums;
+}
+.visits-compact {
+  background: #eee5eb;
+  border-color: #e0d3dc;
+  border-radius: 14px;
+}
+.signed-out main > .hero { background: #ede4ea; border-color: #e0d3dc; }
+.signed-out .account-card { background: var(--surface); }
+.signed-out .hero-title-row h1, .signed-out .login-story h2, .signed-out #account-title {
+  color: #332833;
+  font-family: inherit;
+  font-weight: 640;
+}
+.signed-out .login-illustration { opacity: .58; }
+.login-kicker, .signed-out .login-kicker { display: none; }
+:focus-visible, .signed-out :focus-visible { outline: 2px solid #8d6686; outline-offset: 2px; }

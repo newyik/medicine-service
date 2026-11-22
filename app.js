@@ -1,3 +1,4 @@
+import { createJournalCache } from './journal-cache.js?v=20261122-cache-1';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
 import { initVisits, validateVisits } from './visits.js?v=20261117-redesign';
@@ -6,6 +7,20 @@ import { initEmailAuth } from './email-auth.js?v=20261114-email-1';
 const client = createClient(cloudConfig.url, cloudConfig.publicKey);
 let signedInUser = null;
 let cloudState = null;
+let cloudRevision = -1;
+let cacheUserId = null;
+const journalCache = createJournalCache({
+  getItem: key => localStorage.getItem(key),
+  setItem: (key, value) => localStorage.setItem(key, value),
+  removeItem: key => localStorage.removeItem(key)
+}, checkedState);
+
+function acceptJournal(userId, state, revision) {
+  if (userId !== signedInUser?.id || revision < cloudRevision) return;
+  cloudState = state;
+  cloudRevision = revision;
+  journalCache.write(userId, state, revision);
+}
 let writeQueue = Promise.resolve();
 let accountGeneration = 0;
 
@@ -274,7 +289,7 @@ function update(change, message, status = byId('status')) {
         if (error) throw error;
         if (!saved) continue;
         if (generation !== accountGeneration) return false;
-        cloudState = next;
+        acceptJournal(userId, next, current.revision + 1);
         render();
         status.textContent = message;
         byId('sync-state').textContent = '已同步 · ' + clock.format(Date.now());
@@ -740,13 +755,14 @@ async function refreshJournal() {
     await writeQueue;
     const current = await readJournal(userId);
     if (generation !== accountGeneration) return;
-    if (JSON.stringify(cloudState) !== JSON.stringify(current.state)) {
-      cloudState = current.state;
-      render();
+    if (current.revision >= cloudRevision) {
+      const changed = JSON.stringify(cloudState) !== JSON.stringify(current.state);
+      acceptJournal(userId, current.state, current.revision);
+      if (changed) render();
     }
     byId('sync-state').textContent = '已同步 · ' + clock.format(Date.now());
   } catch {
-    if (generation === accountGeneration) byId('sync-state').textContent = '读取云端失败，请检查网络后重试';
+    if (generation === accountGeneration) byId('sync-state').textContent = '暂未连上云端，当前显示上次保存的记录。可点「重新同步」。';
   } finally {
     refreshing = false;
   }
@@ -764,8 +780,11 @@ async function showAccount(session) {
   emailUI.setUser(user);
   if (signedInUser?.id === user?.id && cloudState) return;
   const generation = ++accountGeneration;
+  if (cacheUserId && cacheUserId !== user?.id) journalCache.remove(cacheUserId);
+  cacheUserId = user?.id ?? null;
   signedInUser = user;
   cloudState = null;
+  cloudRevision = -1;
   visitsUI.reset();
   byId('journal').hidden = true;
   editor.close();
@@ -778,10 +797,20 @@ async function showAccount(session) {
     revealApp();
     return;
   }
-  byId('app-main').hidden = true;
-  byId('session-startup-status').textContent = '正在读取云端记录…';
-  byId('session-startup-retry').hidden = true;
-  byId('session-startup').hidden = false;
+  const cached = journalCache.read(user.id);
+  if (cached) {
+    cloudState = cached.state;
+    cloudRevision = cached.revision;
+    byId('journal').hidden = false;
+    render();
+    byId('sync-state').textContent = '显示上次保存的记录 · 正在后台同步…';
+    revealApp();
+  } else {
+    byId('app-main').hidden = true;
+    byId('session-startup-status').textContent = '正在读取云端记录…';
+    byId('session-startup-retry').hidden = true;
+    byId('session-startup').hidden = false;
+  }
   try {
     const { error } = await client.from('medicine_journals').upsert(
       { user_id: user.id }, { onConflict: 'user_id', ignoreDuplicates: true }
@@ -789,12 +818,18 @@ async function showAccount(session) {
     if (error) throw error;
     const current = await readJournal(user.id);
     if (generation !== accountGeneration) return;
-    cloudState = current.state;
+    const changed = JSON.stringify(cloudState) !== JSON.stringify(current.state);
+    acceptJournal(user.id, current.state, current.revision);
     byId('journal').hidden = false;
-    render();
+    if (!cached || changed) render();
     byId('sync-state').textContent = '已同步 · ' + clock.format(Date.now());
   } catch {
     if (generation !== accountGeneration) return;
+    if (cloudState) {
+      byId('sync-state').textContent = '暂未连上云端，当前显示上次保存的记录。可点「重新同步」。';
+      revealApp();
+      return;
+    }
     cloudState = null;
     byId('journal').hidden = true;
     byId('session-startup-status').textContent = '暂时无法读取云端记录，请检查网络后重试。';
@@ -813,6 +848,7 @@ async function showAccount(session) {
 
 byId('logout').onclick = async () => {
   await writeQueue;
+  journalCache.remove(signedInUser?.id);
   const { error } = await client.auth.signOut({ scope: 'local' });
   if (error) byId('sync-state').textContent = '退出失败，请重试。';
 };

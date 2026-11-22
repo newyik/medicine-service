@@ -1,219 +1,507 @@
-import Cocoa
+// 吃药服务 Mac 外壳（WebWrap）
+// 业务逻辑全部在网页里，这里只负责“像一个 Mac 应用”：
+// 原生工具栏（用药/看病切换、新建菜单、刷新）、完整菜单栏和快捷键、跟随系统深浅色、
+// 记住窗口大小位置、网页里的确认框、导入备份时的选文件、导出备份时的保存位置。
+// 网址和名称来自 App 包内的 Contents/Resources/config.json。
+// 旧版（SwiftUI 简单外壳）备份在 main.swift.bak-20261117。
+
+import AppKit
 import WebKit
+import UniformTypeIdentifiers
 
-let siteURL = URL(string: "https://newyik.github.io/medicine-service/")!
+// MARK: - 配置
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSWindowDelegate, NSToolbarDelegate {
-    var window: NSWindow!
-    var web: WKWebView!
-    var downloads: [WKDownload] = []
+struct Config {
+    let url: URL
+    let title: String
+    static let shared: Config = {
+        let fallback = Config(url: URL(string: "about:blank")!, title: "网页应用")
+        guard let p = Bundle.main.url(forResource: "config", withExtension: "json"),
+              let d = try? Data(contentsOf: p),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: String],
+              let u = o["url"].flatMap(URL.init(string:)) else { return fallback }
+        return Config(url: u, title: o["title"] ?? "网页应用")
+    }()
+}
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        makeMenu()
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
-        installAppearance(in: configuration.userContentController)
-        web = WKWebView(frame: .zero, configuration: configuration)
-        web.navigationDelegate = self
-        web.uiDelegate = self
-        web.allowsBackForwardNavigationGestures = true
-        web.setValue(false, forKey: "drawsBackground")
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "吃药服务"
-        window.minSize = NSSize(width: 400, height: 580)
+// MARK: - 注入网页的脚本
+
+/// 给网页加上 native-mac 标记（网页样式据此隐藏与工具栏重复的顶栏），
+/// 并在登录状态或页面切换时通知外壳更新工具栏。
+private let bridgeEarly = "document.documentElement.classList.add('native-mac');"
+private let bridgeLate = """
+(function(){
+  const post=()=>{try{webkit.messageHandlers.shell.postMessage({
+    signedIn:!document.body.classList.contains('signed-out'),
+    visits:location.hash==='#visits'})}catch(e){}};
+  new MutationObserver(post).observe(document.body,{attributes:true,attributeFilter:['class']});
+  addEventListener('hashchange',post); post();
+})();
+"""
+
+/// 切到某个页面，再点网页里的某个按钮（按钮 id 见 medicine-service/index.html）
+private func clickScript(visits: Bool?, id: String?) -> String {
+    var js = "(function(){"
+    if let v = visits { js += "const want=\(v);if((location.hash==='#visits')!==want){location.hash=want?'visits':'';}" }
+    if let id { js += "setTimeout(()=>{const b=document.getElementById('\(id)');if(b&&!b.closest('[hidden]'))b.click();},80);" }
+    js += "})();"
+    return js
+}
+
+// MARK: - 窗口控制器
+
+final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuItemValidation,
+    WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate {
+
+    let webView: WKWebView
+    private let segmented = NSSegmentedControl(labels: ["用药", "看病"], trackingMode: .selectOne, target: nil, action: nil)
+    private let spinner = NSProgressIndicator()
+    private let errorView = NSStackView()
+    private var signedIn = false
+    private var firstLoadDone = false
+    private var leftAt: Date?
+    /// 离开超过这么久再回来才自动刷新，免得冲掉正在填的内容
+    private let staleAfter: TimeInterval = 600
+
+    init() {
+        let cfg = WKWebViewConfiguration()
+        cfg.websiteDataStore = .default()
+        let ucc = WKUserContentController()
+        ucc.addUserScript(WKUserScript(source: bridgeEarly, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        ucc.addUserScript(WKUserScript(source: bridgeLate, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        cfg.userContentController = ucc
+        cfg.applicationNameForUserAgent = "MedicineMac/3"
+        webView = WKWebView(frame: .zero, configuration: cfg)
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.allowsBackForwardNavigationGestures = false
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                              backing: .buffered, defer: false)
+        window.title = Config.shared.title
+        window.minSize = NSSize(width: 420, height: 520)
+        window.toolbarStyle = .unified
+        window.backgroundColor = .windowBackgroundColor
         window.isReleasedWhenClosed = false
-        window.contentView = web
-        window.delegate = self
-        window.toolbarStyle = .unifiedCompact
-        let toolbar = NSToolbar(identifier: "MedicineToolbar")
-        toolbar.delegate = self
-        toolbar.allowsUserCustomization = true
-        toolbar.autosavesConfiguration = true
-        window.toolbar = toolbar
+        super.init(window: window)
+
+        ucc.add(WeakMessageHandler(self), name: "shell")
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        buildContent()
+        buildToolbar()
         window.center()
-        window.setFrameAutosaveName("MedicineMainWindow")
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        web.load(URLRequest(url: siteURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
+        window.setFrameAutosaveName("MainWindow")
+        webView.load(URLRequest(url: Config.shared.url, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 20))
     }
-    private func installAppearance(in controller: WKUserContentController) {
-        guard let url = Bundle.main.url(forResource: "Appearance", withExtension: "css"),
-              let css = try? String(contentsOf: url, encoding: .utf8),
-              let payload = try? JSONSerialization.data(withJSONObject: [css]),
-              let literal = String(data: payload, encoding: .utf8) else { return }
-        let source = """
-        if (location.origin === '\(siteURL.scheme!)://\(siteURL.host!)' && location.href.split(/[?#]/)[0] === '\(siteURL.absoluteString)') {
-            const appearance = document.createElement('style');
-            appearance.id = 'medicine-mac-appearance';
-            appearance.textContent = \(literal)[0];
-            document.head.append(appearance);
-        }
-        """
-        controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    required init?(coder: NSCoder) { fatalError() }
+
+    // 内容区：网页 + 首次加载转圈 + 断网提示
+    private func buildContent() {
+        let root = NSView()
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(webView)
+
+        spinner.style = .spinning
+        spinner.controlSize = .regular
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.startAnimation(nil)
+        root.addSubview(spinner)
+
+        let icon = NSImageView(image: NSImage(systemSymbolName: "wifi.exclamationmark", accessibilityDescription: nil) ?? NSImage())
+        icon.symbolConfiguration = .init(pointSize: 34, weight: .regular)
+        icon.contentTintColor = .secondaryLabelColor
+        let title = NSTextField(labelWithString: "暂时连不上")
+        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        let detail = NSTextField(labelWithString: "请检查网络连接，然后重试。")
+        detail.textColor = .secondaryLabelColor
+        let retry = NSButton(title: "重试", target: self, action: #selector(reloadPage(_:)))
+        retry.bezelStyle = .rounded
+        retry.keyEquivalent = "\r"
+        errorView.orientation = .vertical
+        errorView.spacing = 10
+        errorView.setViews([icon, title, detail, retry], in: .center)
+        errorView.setCustomSpacing(16, after: detail)
+        errorView.translatesAutoresizingMaskIntoConstraints = false
+        errorView.isHidden = true
+        root.addSubview(errorView)
+
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            spinner.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+            errorView.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            errorView.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+        ])
+        window?.contentView = root
     }
 
-    func makeMenu() {
-        let menu = NSMenu()
-        let appItem = NSMenuItem(); let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "关于吃药服务", action: #selector(about), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "隐藏吃药服务", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "退出吃药服务", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appItem.submenu = appMenu; menu.addItem(appItem)
-        let editItem = NSMenuItem(); let edit = NSMenu(title: "编辑")
-        for (title, selector, key) in [("撤销", "undo:", "z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] { edit.addItem(withTitle: title, action: Selector(selector), keyEquivalent: key) }
-        editItem.submenu = edit; menu.addItem(editItem)
-        let viewItem = NSMenuItem(); let view = NSMenu(title: "显示")
-        view.addItem(withTitle: "刷新／获取最新版本", action: #selector(refresh), keyEquivalent: "r")
-        view.addItem(withTitle: "返回", action: #selector(goBack), keyEquivalent: "[")
-        view.addItem(withTitle: "在浏览器中打开", action: #selector(openBrowser), keyEquivalent: "")
-        view.addItem(.separator())
-        view.addItem(withTitle: "放大", action: #selector(zoomIn), keyEquivalent: "+")
-        view.addItem(withTitle: "缩小", action: #selector(zoomOut), keyEquivalent: "-")
-        view.addItem(withTitle: "实际大小", action: #selector(zoomReset), keyEquivalent: "0")
-        viewItem.submenu = view; menu.addItem(viewItem)
-        let recordItem = NSMenuItem(); let record = NSMenu(title: "记录")
-        addCommand("补记用药", #selector(addDose), "n", to: record)
-        addCommand("记录就诊", #selector(addVisit), "j", to: record)
-        addCommand("用药记录", #selector(showJournal), "1", to: record)
-        addCommand("看病记录", #selector(showVisits), "2", to: record)
-        addCommand("同步云端记录", #selector(syncJournal), "s", to: record)
-        recordItem.submenu = record; menu.addItem(recordItem)
-        let windowItem = NSMenuItem(); let windowMenu = NSMenu(title: "窗口")
-        windowMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowItem.submenu = windowMenu; menu.addItem(windowItem)
-        NSApp.windowsMenu = windowMenu
-        NSApp.mainMenu = menu
-    }
-    @objc func about() {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "吃药服务", .applicationVersion: "2.1", .credits: NSAttributedString(string: "与线上网页使用同一界面和云端数据。\n使用「记录」菜单或窗口工具栏快速操作。")])
-    }
-    @objc func refresh() {
-        web.evaluateJavaScript("!!document.querySelector('dialog[open]') || !!document.querySelector('#email-login-password')?.value") { [weak self] result, _ in
-            guard let self = self else { return }
-            if result as? Bool == true {
-                let alert = NSAlert(); alert.messageText = "刷新会关闭当前输入"; alert.informativeText = "请先保存正在编辑的内容。未保存的输入可能丢失。"; alert.addButton(withTitle: "继续编辑"); alert.addButton(withTitle: "仍然刷新")
-                alert.beginSheetModal(for: self.window) { if $0 == .alertSecondButtonReturn { self.web.reloadFromOrigin() } }
-            } else { self.web.reloadFromOrigin() }
-        }
-    }
-    @objc func goBack() { if web.canGoBack { web.goBack() } }
-    @objc func openBrowser() { NSWorkspace.shared.open(web.url ?? siteURL) }
-    @objc func zoomIn() { web.pageZoom = min(2, web.pageZoom + 0.1) }
-    @objc func zoomOut() { web.pageZoom = max(0.7, web.pageZoom - 0.1) }
-    @objc func zoomReset() { web.pageZoom = 1 }
-    private func addCommand(_ title: String, _ action: Selector, _ key: String, to menu: NSMenu) {
-        let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
-        item.target = self
+    // MARK: 工具栏
+
+    private enum Item {
+        static let switcher = NSToolbarItem.Identifier("switcher")
+        static let add = NSToolbarItem.Identifier("add")
+        static let reload = NSToolbarItem.Identifier("reload")
     }
 
-    private var tools: [(String, String, String, Selector)] {
-        [
-            ("journal", "用药记录", "pills", #selector(showJournal)),
-            ("visits", "看病记录", "cross.case", #selector(showVisits)),
-            ("dose", "补记用药", "plus", #selector(addDose)),
-            ("sync", "同步", "arrow.clockwise", #selector(syncJournal))
-        ]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        tools.map { NSToolbarItem.Identifier($0.0) } + [.flexibleSpace, .space]
+    private func buildToolbar() {
+        let tb = NSToolbar(identifier: "main")
+        tb.delegate = self
+        tb.displayMode = .iconOnly
+        tb.allowsUserCustomization = false
+        tb.centeredItemIdentifiers = [Item.switcher]
+        segmented.target = self
+        segmented.action = #selector(switchPage(_:))
+        segmented.selectedSegment = 0
+        segmented.setWidth(64, forSegment: 0)
+        segmented.setWidth(64, forSegment: 1)
+        window?.toolbar = tb
+        updateChrome()
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.init("journal"), .init("visits"), .flexibleSpace, .init("dose"), .init("sync")]
+        [.flexibleSpace, Item.switcher, .flexibleSpace, Item.reload, Item.add]
     }
-
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard let tool = tools.first(where: { $0.0 == identifier.rawValue }) else { return nil }
-        let item = NSToolbarItem(itemIdentifier: identifier)
-        item.label = tool.1
-        item.paletteLabel = tool.1
-        item.toolTip = tool.1
-        item.image = NSImage(systemSymbolName: tool.2, accessibilityDescription: tool.1)
-        item.target = self
-        item.action = tool.3
-        return item
-    }
-
-    @objc private func showJournal() { runPageAction(route: "") }
-    @objc private func showVisits() { runPageAction(route: "#visits") }
-    @objc private func addDose() { runPageAction(route: "", button: "manual") }
-    @objc private func addVisit() { runPageAction(route: "#visits", button: "visit-add") }
-    @objc private func syncJournal() { runPageAction(button: "sync-retry") }
-
-    private func runPageAction(route: String? = nil, button: String? = nil) {
-        guard let url = web.url, url.scheme == siteURL.scheme, url.host == siteURL.host,
-              url.path == siteURL.path, !web.isLoading, window.attachedSheet == nil else { return }
-        let script = """
-        if (document.getElementById('app-main')?.hidden || document.querySelector('dialog[open]')) return false;
-        const journal = document.getElementById('journal');
-        const visits = document.getElementById('visits-page');
-        if (!journal || !visits || (journal.hidden && visits.hidden)) return false;
-        const control = button ? document.getElementById(button) : null;
-        if (button && (!control || control.disabled)) return false;
-        if (route !== null && location.hash !== route) {
-            await new Promise(resolve => {
-                window.addEventListener('hashchange', resolve, {once:true});
-                location.hash = route;
-            });
-        }
-        if (document.querySelector('dialog[open]')) return false;
-        control?.click();
-        return true;
-        """
-        web.callAsyncJavaScript(script, arguments: ["route": route as Any? ?? NSNull(), "button": button as Any? ?? NSNull()],
-                                in: nil, in: .page) { result in
-            if case .success(let handled) = result, handled as? Bool == true { return }
-            NSSound.beep()
+        switch id {
+        case Item.switcher:
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.view = segmented
+            item.label = "页面"
+            item.toolTip = "在用药记录和看病记录之间切换（⌘1 / ⌘2）"
+            return item
+        case Item.reload:
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "重新载入")
+            item.label = "重新载入"
+            item.toolTip = "重新载入（⌘R）"
+            item.isBordered = true
+            item.target = self
+            item.action = #selector(reloadPage(_:))
+            return item
+        case Item.add:
+            let item = NSMenuToolbarItem(itemIdentifier: id)
+            item.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "新建")
+            item.label = "新建"
+            item.toolTip = "新建记录"
+            item.showsIndicator = true
+            item.menu = AppMenus.newItemsMenu()
+            return item
+        default:
+            return nil
         }
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        window?.makeKeyAndOrderFront(nil)
-        return true
+    /// 登录前隐藏切换和新建；登录后网页自己的顶栏隐藏，由工具栏代替
+    private func updateChrome() {
+        for item in window?.toolbar?.items ?? [] where item.itemIdentifier == Item.switcher || item.itemIdentifier == Item.add {
+            if #available(macOS 15.0, *) { item.isHidden = !signedIn } else { item.isEnabled = signedIn }
+        }
+        segmented.isEnabled = signedIn
+        window?.subtitle = signedIn ? (segmented.selectedSegment == 1 ? "看病记录" : "用药记录") : ""
     }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showError(error) }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { showError(error) }
-    func showError(_ error: Error) {
-        if (error as NSError).code == NSURLErrorCancelled { return }
-        let alert = NSAlert(); alert.messageText = "暂时无法连接吃药服务"; alert.informativeText = "请检查网络后按 ⌘R 重试。云端已经保存的记录不会丢失。\n" + error.localizedDescription; alert.addButton(withTitle: "知道了")
-        if window.attachedSheet == nil { alert.beginSheetModal(for: window) }
+
+    // MARK: 动作（菜单和工具栏共用）
+
+    @objc func switchPage(_ sender: Any?) {
+        let toVisits: Bool
+        if let s = sender as? NSSegmentedControl { toVisits = s.selectedSegment == 1 }
+        else if let m = sender as? NSMenuItem { toVisits = m.tag == 1 }
+        else { toVisits = false }
+        segmented.selectedSegment = toVisits ? 1 : 0
+        run(clickScript(visits: toVisits, id: nil))
+        updateChrome()
     }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { showError(NSError(domain: "吃药服务", code: 1, userInfo: [NSLocalizedDescriptionKey: "页面进程已退出，请按 ⌘R 重新载入。未提交的输入可能需要重填。 "])) }
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
-        if navigationAction.shouldPerformDownload { decisionHandler(.download); return }
-        if ["https", "http", "about", "blob", "data"].contains(url.scheme ?? "") { decisionHandler(.allow) }
-        else { decisionHandler(.cancel); NSWorkspace.shared.open(url) }
+    @objc func reloadPage(_ sender: Any?) {
+        errorView.isHidden = true
+        if !firstLoadDone {
+            spinner.isHidden = false
+            spinner.startAnimation(nil)
+            webView.load(URLRequest(url: Config.shared.url))
+        } else {
+            webView.reload()
+        }
     }
-    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) { decisionHandler(navigationResponse.canShowMIMEType ? .allow : .download) }
-    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { downloads.append(download); download.delegate = self }
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { downloads.append(download); download.delegate = self }
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let panel = NSSavePanel(); panel.nameFieldStringValue = suggestedFilename; panel.canCreateDirectories = true
-        panel.beginSheetModal(for: window) { result in completionHandler(result == .OK ? panel.url : nil) }
+    @objc func newMedicineRecord(_ sender: Any?) { run(clickScript(visits: false, id: "manual")) }
+    @objc func newMedicine(_ sender: Any?) { run(clickScript(visits: false, id: "add-med")) }
+    @objc func newVisit(_ sender: Any?) { run(clickScript(visits: true, id: "visit-add")) }
+    @objc func newAppointment(_ sender: Any?) { run(clickScript(visits: true, id: "appointment-add")) }
+    @objc func exportBackup(_ sender: Any?) { run(clickScript(visits: false, id: "export")) }
+    @objc func importBackup(_ sender: Any?) { run(clickScript(visits: false, id: "import")) }
+    @objc func findInPage(_ sender: Any?) {
+        run(clickScript(visits: true, id: nil) + "setTimeout(()=>document.getElementById('visits-filter')?.focus(),120);")
     }
-    func downloadDidFinish(_ download: WKDownload) { downloads.removeAll { $0 === download } }
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) { downloads.removeAll { $0 === download }; if (error as NSError).code != NSURLErrorCancelled { showError(error) } }
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? { if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }; return nil }
-    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        let a = NSAlert(); a.messageText = message; a.addButton(withTitle: "确定"); a.beginSheetModal(for: window) { _ in completionHandler() }
+    @objc func zoomIn(_ sender: Any?) { webView.pageZoom = min(webView.pageZoom + 0.1, 2) }
+    @objc func zoomOut(_ sender: Any?) { webView.pageZoom = max(webView.pageZoom - 0.1, 0.6) }
+    @objc func zoomReset(_ sender: Any?) { webView.pageZoom = 1 }
+
+    private func run(_ js: String) { webView.evaluateJavaScript(js, completionHandler: nil) }
+
+    /// 未登录时，和记录有关的菜单项变灰
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(switchPage(_:)):
+            item.state = (item.tag == segmented.selectedSegment) ? .on : .off
+            return signedIn
+        case #selector(newMedicineRecord(_:)), #selector(newMedicine(_:)), #selector(newVisit(_:)),
+             #selector(newAppointment(_:)), #selector(exportBackup(_:)), #selector(importBackup(_:)),
+             #selector(findInPage(_:)):
+            return signedIn
+        default:
+            return true
+        }
     }
-    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
-        let a = NSAlert(); a.messageText = message; a.addButton(withTitle: "确定"); a.addButton(withTitle: "取消"); a.beginSheetModal(for: window) { completionHandler($0 == .alertFirstButtonReturn) }
+
+    // MARK: 回到前台时按需刷新
+
+    func noteInactive() { leftAt = Date() }
+    func reloadIfStale() {
+        guard let t = leftAt else { return }
+        leftAt = nil
+        if Date().timeIntervalSince(t) > staleAfter { webView.reload() }
     }
-    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
-        let a=NSAlert(); a.messageText=prompt; let field=NSTextField(string:defaultText ?? ""); field.frame=NSRect(x:0,y:0,width:300,height:24); a.accessoryView=field; a.addButton(withTitle:"确定");a.addButton(withTitle:"取消");a.beginSheetModal(for:window){completionHandler($0 == .alertFirstButtonReturn ? field.stringValue:nil)}
+
+    // MARK: 网页 → 外壳
+
+    func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any] else { return }
+        signedIn = body["signedIn"] as? Bool ?? false
+        segmented.selectedSegment = (body["visits"] as? Bool ?? false) ? 1 : 0
+        updateChrome()
     }
-    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
-        let p=NSOpenPanel(); p.allowsMultipleSelection=parameters.allowsMultipleSelection;p.canChooseDirectories=parameters.allowsDirectories;p.beginSheetModal(for:window){completionHandler($0 == .OK ? p.urls:nil)}
+
+    // MARK: 加载状态
+
+    func webView(_ w: WKWebView, didFinish n: WKNavigation!) {
+        firstLoadDone = true
+        spinner.stopAnimation(nil)
+        spinner.isHidden = true
+        errorView.isHidden = true
+    }
+    func webView(_ w: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) { showError(e) }
+    func webView(_ w: WKWebView, didFail n: WKNavigation!, withError e: Error) { showError(e) }
+    private func showError(_ e: Error) {
+        let ns = e as NSError
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
+        spinner.isHidden = true
+        if !firstLoadDone { errorView.isHidden = false }
+    }
+    func webViewWebContentProcessDidTerminate(_ w: WKWebView) { w.reload() }
+
+    // 导出备份（网页用 <a download> 触发）→ 走下载流程，让用户选保存位置
+    func webView(_ w: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        decisionHandler(action.shouldPerformDownload ? .download : .allow)
+    }
+    func webView(_ w: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+    func webView(_ w: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
+                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedFilename
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.message = "选择备份文件的保存位置"
+        guard let window else { completionHandler(nil); return }
+        panel.beginSheetModal(for: window) { r in
+            guard r == .OK, let url = panel.url else { completionHandler(nil); return }
+            try? FileManager.default.removeItem(at: url)
+            completionHandler(url)
+        }
+    }
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        alert("备份没有保存成功", error.localizedDescription)
+    }
+
+    // MARK: 网页里的确认框、提示框、选文件、新窗口
+
+    func webView(_ w: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let a = NSAlert()
+        a.messageText = message
+        a.addButton(withTitle: "好")
+        sheet(a) { _ in completionHandler() }
+    }
+    func webView(_ w: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let a = NSAlert()
+        a.messageText = message
+        let destructive = message.hasPrefix("删除")
+        let ok = a.addButton(withTitle: destructive ? "删除" : "确定")
+        ok.hasDestructiveAction = destructive
+        a.addButton(withTitle: "取消")
+        sheet(a) { completionHandler($0 == .alertFirstButtonReturn) }
+    }
+    func webView(_ w: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.json]
+        panel.message = "选择之前导出的备份文件"
+        guard let window else { completionHandler(nil); return }
+        panel.beginSheetModal(for: window) { r in completionHandler(r == .OK ? panel.urls : nil) }
+    }
+    /// target=_blank 的链接（如地图版权说明）用默认浏览器打开
+    func webView(_ w: WKWebView, createWebViewWith c: WKWebViewConfiguration,
+                 for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = action.request.url { NSWorkspace.shared.open(url) }
+        return nil
+    }
+
+    private func sheet(_ a: NSAlert, _ done: @escaping (NSApplication.ModalResponse) -> Void) {
+        if let window, window.isVisible { a.beginSheetModal(for: window, completionHandler: done) } else { done(a.runModal()) }
+    }
+    private func alert(_ title: String, _ detail: String) {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = detail
+        sheet(a) { _ in }
     }
 }
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.run()
+
+/// 避免 WKUserContentController 和窗口控制器互相强引用
+final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+    init(_ t: WKScriptMessageHandler) { target = t }
+    func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
+        target?.userContentController(c, didReceive: m)
+    }
+}
+
+// MARK: - 菜单栏
+
+enum AppMenus {
+    static func item(_ title: String, _ action: Selector?, _ key: String = "",
+                     _ mods: NSEvent.ModifierFlags = .command, tag: Int = 0) -> NSMenuItem {
+        let m = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        m.keyEquivalentModifierMask = mods
+        m.tag = tag
+        return m
+    }
+
+    static func newItemsMenu() -> NSMenu {
+        let m = NSMenu(title: "新建")
+        m.addItem(item("补记一次用药", #selector(MainWindowController.newMedicineRecord(_:))))
+        m.addItem(item("添加药物", #selector(MainWindowController.newMedicine(_:))))
+        m.addItem(.separator())
+        m.addItem(item("记一次就诊", #selector(MainWindowController.newVisit(_:))))
+        m.addItem(item("添加预约", #selector(MainWindowController.newAppointment(_:))))
+        return m
+    }
+
+    static func build() -> NSMenu {
+        let name = Config.shared.title
+        let main = NSMenu()
+
+        let app = NSMenu(title: name)
+        app.addItem(item("关于\(name)", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
+        app.addItem(.separator())
+        let services = NSMenuItem(title: "服务", action: nil, keyEquivalent: "")
+        services.submenu = NSMenu(title: "服务")
+        NSApp.servicesMenu = services.submenu
+        app.addItem(services)
+        app.addItem(.separator())
+        app.addItem(item("隐藏\(name)", #selector(NSApplication.hide(_:)), "h"))
+        app.addItem(item("隐藏其他", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]))
+        app.addItem(item("全部显示", #selector(NSApplication.unhideAllApplications(_:))))
+        app.addItem(.separator())
+        app.addItem(item("退出\(name)", #selector(NSApplication.terminate(_:)), "q"))
+
+        let file = NSMenu(title: "文件")
+        file.addItem(item("补记一次用药", #selector(MainWindowController.newMedicineRecord(_:)), "n"))
+        file.addItem(item("添加药物", #selector(MainWindowController.newMedicine(_:)), "n", [.command, .shift]))
+        file.addItem(item("记一次就诊", #selector(MainWindowController.newVisit(_:)), "n", [.command, .option]))
+        file.addItem(item("添加预约", #selector(MainWindowController.newAppointment(_:))))
+        file.addItem(.separator())
+        file.addItem(item("导入备份…", #selector(MainWindowController.importBackup(_:)), "o"))
+        file.addItem(item("导出备份…", #selector(MainWindowController.exportBackup(_:)), "e", [.command, .shift]))
+        file.addItem(.separator())
+        file.addItem(item("关闭窗口", #selector(NSWindow.performClose(_:)), "w"))
+
+        // 编辑菜单：没有它，网页输入框里的 ⌘C / ⌘V / ⌘Z 都不起作用
+        let edit = NSMenu(title: "编辑")
+        edit.addItem(item("撤销", Selector(("undo:")), "z"))
+        edit.addItem(item("重做", Selector(("redo:")), "z", [.command, .shift]))
+        edit.addItem(.separator())
+        edit.addItem(item("剪切", #selector(NSText.cut(_:)), "x"))
+        edit.addItem(item("拷贝", #selector(NSText.copy(_:)), "c"))
+        edit.addItem(item("粘贴", #selector(NSText.paste(_:)), "v"))
+        edit.addItem(item("全选", #selector(NSText.selectAll(_:)), "a"))
+        edit.addItem(.separator())
+        edit.addItem(item("搜索就诊记录", #selector(MainWindowController.findInPage(_:)), "f"))
+
+        let view = NSMenu(title: "显示")
+        view.addItem(item("用药记录", #selector(MainWindowController.switchPage(_:)), "1", tag: 0))
+        view.addItem(item("看病记录", #selector(MainWindowController.switchPage(_:)), "2", tag: 1))
+        view.addItem(.separator())
+        view.addItem(item("重新载入", #selector(MainWindowController.reloadPage(_:)), "r"))
+        view.addItem(.separator())
+        view.addItem(item("实际大小", #selector(MainWindowController.zoomReset(_:)), "0"))
+        view.addItem(item("放大", #selector(MainWindowController.zoomIn(_:)), "+"))
+        view.addItem(item("缩小", #selector(MainWindowController.zoomOut(_:)), "-"))
+        view.addItem(.separator())
+        view.addItem(item("进入全屏幕", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
+
+        let window = NSMenu(title: "窗口")
+        window.addItem(item("最小化", #selector(NSWindow.performMiniaturize(_:)), "m"))
+        window.addItem(item("缩放", #selector(NSWindow.performZoom(_:))))
+        window.addItem(.separator())
+        window.addItem(item("前置全部窗口", #selector(NSApplication.arrangeInFront(_:))))
+        NSApp.windowsMenu = window
+
+        for sub in [app, file, edit, view, window] {
+            let top = NSMenuItem(title: sub.title, action: nil, keyEquivalent: "")
+            top.submenu = sub
+            main.addItem(top)
+        }
+        return main
+    }
+}
+
+// MARK: - 入口
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    var controller: MainWindowController!
+
+    func applicationDidFinishLaunching(_ note: Notification) {
+        NSApp.mainMenu = AppMenus.build()
+        controller = MainWindowController()
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.controller.noteInactive()
+        }
+        nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.controller.reloadIfStale()
+        }
+    }
+    /// 关掉窗口后点 Dock 图标，重新打开窗口（和系统自带应用一样）
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { controller.showWindow(nil) }
+        return true
+    }
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+}
+
+@main
+enum Main {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.regular)
+        withExtendedLifetime(delegate) { app.run() }
+    }
+}

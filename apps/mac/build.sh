@@ -6,9 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 app="build/吃药服务.app"
 rm -rf "$app"; mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-swiftc -O -target arm64-apple-macos13.0 App.swift -o "$app/Contents/MacOS/WebWrap"
+swiftc -O -parse-as-library -target arm64-apple-macos13.0 App.swift -o "$app/Contents/MacOS/WebWrap" -framework AppKit -framework WebKit
 cp Info.plist "$app/Contents/Info.plist"
-cp AppIcon.icns Appearance.css "$app/Contents/Resources/"
+cp AppIcon.icns config.json "$app/Contents/Resources/"
 codesign --force --sign - "$app"
 echo "已生成：$app"
 if [[ "${1:-}" == "--install" ]]; then

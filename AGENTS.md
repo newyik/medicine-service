@@ -14,7 +14,7 @@
 | 部分 | 位置 | 是什么 |
 |---|---|---|
 | 网页 | 根目录：`index.html`、`style.css`、`app.js`、`visits.js`、`email-auth.js`、`journal-cache.js`、`config.js`、`assets/` | 全部功能都在这里（用药、看病、预约提醒、邮箱登录、云同步）。线上：https://newyik.github.io/medicine-service/ |
-| Mac 外壳 | `apps/mac/` | Swift 写的 WebView 外壳（`App.swift`），加载线上网页；`Appearance.css` 做原生外观适配 |
+| Mac 外壳 | `apps/mac/` | Swift 写的 WebView 外壳（`App.swift`，纯 AppKit：原生工具栏切换用药/看病、＋新建菜单、菜单栏快捷键，给网页 `<html>` 加 `native-mac` 让网页隐藏自己的顶栏），网址来自 `config.json` |
 | iPhone 外壳 | `apps/ios/` | Swift/UIKit WebView 外壳，加载线上网页，提供原生导航栏、标签栏、下拉刷新、分享导出；会给 `<html>` 加 `native-ios` 类 |
 | 安装说明 | `apps/docs/iPhone安装说明.md` | Sideloadly 侧载步骤 |
 

@@ -20,6 +20,14 @@
 
 外壳里没有业务逻辑，改功能改网页就行。网页发布后，外壳会自动加载新版。
 
+## 数据库在哪（2026-11-27 迁移）
+
+- 现在用小家控共用的 Supabase 项目 together-list（ref `xwzovuseugyneqsmlnry`），和小家控、日和账本、拾事、星期五同一套账号登录。
+- 表 `public.medicine_journals`（每账号一行：`user_id`、`data` JSON、`revision` 版本号），保存走 RPC `save_medicine_journal(expected_revision, new_data)`，返回 false 表示版本冲突要重读重试。
+- 建表脚本：`migrations/together-list-setup.sql`（这个项目新表必须单独 grant 给 authenticated，否则 403）。
+- 迁移过程：旧项目 `xexgomczseihfjzqxnvc` 只有 newyik@yahoo.com 一个账号（4 种药、63 条记录、0 条看病、第 99 版）；整行复制到新项目，user_id 换成 `35b3bab0-0f2e-4403-b64e-12347996cd4f`，版本号保留 99，两边 `md5(data::text)` 一致。
+- 旧项目先保留不删不停，确认新项目稳定后再处理。回滚：`config.js` 换回旧地址和旧公开密钥（写在文件注释里）再推送。
+
 ## 旧规矩（必须遵守）
 
 - **没有构建步骤。** 直接改 `app.js` / `visits.js` / `email-auth.js` / `index.html` / `style.css`，不要引入打包工具或框架。

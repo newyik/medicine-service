@@ -18,7 +18,7 @@ function setup(cached, fail = false) {
       return nodes.get(id);
     },
     signedInUser: null, cloudState: null, cloudRevision: -1, cacheUserId: null, accountGeneration: 0,
-    emailUI: { setUser() {} }, visitsUI: { reset() {} },
+    emailUI: { setUser() {} }, visitsUI: { reset() {} }, checkupsUI: { reset() {} },
     editor: { close() {} }, medicineEditor: { close() {} },
     render() {}, clock: { format() { return '12:00'; } },
     localStorage: { getItem() { return '[]'; } }, key: 'legacy',

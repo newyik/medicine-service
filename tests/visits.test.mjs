@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateVisits } from '../visits.js';
+import { validateCheckups, mergeCheckups } from '../checkups.js';
 const visit = () => ({id:'test-visit',at:new Date('2026-11-01T10:00:00+09:00').getTime(),hospital:' 测试医院 ',summary:'示例说明',followup:'2026-11-30',cost:'1200'});
 test('old journals without visit data default to an empty list',()=>assert.deepEqual(validateVisits(),[]));
 test('visit fields normalize and retain notes, hospital, cost and followup',()=>{const result=validateVisits([visit()])[0];assert.equal(result.hospital,'测试医院');assert.equal(result.cost,'1200');assert.equal(result.summary,'示例说明');assert.equal(result.followup,'2026-11-30');assert.equal(result.notes,'');});
@@ -11,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 const app = readFileSync(new URL('../app.js',import.meta.url),'utf8');
 function journalContext(state) {
-  const context = vm.createContext({validateVisits, fixtureState:state, structuredClone});
+  const context = vm.createContext({validateVisits, validateCheckups, mergeCheckups, fixtureState:state, structuredClone});
   const constants=app.slice(app.indexOf('const medicineTypes'),app.indexOf('let calendarMedicineId'));
   const validation=app.slice(app.indexOf('function validate(records)'),app.indexOf('function loadState()'));
   const merging=app.slice(app.indexOf('async function mergeBackup('),app.indexOf('let refreshing'));

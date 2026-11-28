@@ -54,13 +54,14 @@ export function initVisits({ loadState, update }) {
   function route() {
     let signedIn = true;
     try { loadState(); } catch { signedIn = false; }
-    const isVisit = location.hash === '#visits';
+    const isVisit = location.hash === '#visits', isCheckup = location.hash === '#checkups', away = isVisit || isCheckup;
     page.hidden = !(isVisit && signedIn);
-    $('journal').hidden = isVisit || !signedIn;
-    document.body.classList.toggle('visits-view', isVisit);
-    $('visit-link').href = isVisit ? '#' : '#visits';
-    $('visit-link').textContent = isVisit ? '‹ 用药记录' : '看病记录 ›';
-    document.title = isVisit ? '看病记录 · 吃药服务' : '吃药服务';
+    $('journal').hidden = away || !signedIn;
+    document.body.classList.toggle('visits-view', away);
+    $('visit-link').href = away ? '#' : '#visits';
+    $('visit-link').textContent = away ? '‹ 用药记录' : '看病记录 ›';
+    $('checkup-link').hidden = away;
+    document.title = isVisit ? '看病记录 · 吃药服务' : isCheckup ? '体检报告 · 吃药服务' : '吃药服务';
   }
   window.addEventListener('hashchange', () => { route(); window.scrollTo({ top:0, behavior:'instant' }); });
   function open(visit) {

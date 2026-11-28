@@ -1,7 +1,8 @@
 import { createJournalCache } from './journal-cache.js?v=20261122-cache-1';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
-import { initVisits, validateVisits } from './visits.js?v=20261117-redesign';
+import { initVisits, validateVisits } from './visits.js?v=20261128-checkups';
+import { initCheckups, validateCheckups, mergeCheckups } from './checkups.js?v=20261128-checkups';
 import { initEmailAuth } from './email-auth.js?v=20261114-email-1';
 
 const client = createClient(cloudConfig.url, cloudConfig.publicKey);
@@ -128,8 +129,8 @@ function validateMedicines(medicines) {
 }
 
 function checkedState(stored) {
-  if (Array.isArray(stored)) return { records: validate(stored), medicines: [], visits: [] };
-  return { records: validate(stored.records), medicines: validateMedicines(stored.medicines), visits: validateVisits(stored.visits) };
+  if (Array.isArray(stored)) return { records: validate(stored), medicines: [], visits: [], checkups: [] };
+  return { records: validate(stored.records), medicines: validateMedicines(stored.medicines), visits: validateVisits(stored.visits), checkups: validateCheckups(stored.checkups) };
 }
 
 function loadState() {
@@ -429,6 +430,7 @@ function render() {
   }
   if (archive) history.append(archive);
   visitsUI.render();
+  checkupsUI.render();
 }
 
 function renderCalendar(grouped, medicines, today) {
@@ -699,7 +701,7 @@ byId('edit-form').onsubmit = async event => {
 const backupStatus = byId('backup-status');
 byId('export').onclick = () => {
   try {
-    const blob = new Blob([JSON.stringify({ version: 3, ...loadState() }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 4, ...loadState() }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = element('a', '');
     link.href = url;
@@ -720,10 +722,10 @@ byId('file').onchange = async event => {
   if (!file) return;
   try {
     const backup = JSON.parse(await file.text());
-    if (![1, 2, 3].includes(backup?.version)) throw new Error('Invalid backup version');
+    if (![1, 2, 3, 4].includes(backup?.version)) throw new Error('Invalid backup version');
     const imported = validate(backup.records);
     const importedMedicines = backup.version >= 2 ? validateMedicines(backup.medicines) : [];
-    await mergeBackup(imported, importedMedicines, backupStatus, backup.version >= 3 ? validateVisits(backup.visits) : []);
+    await mergeBackup(imported, importedMedicines, backupStatus, backup.version >= 3 ? validateVisits(backup.visits) : [], backup.version >= 4 ? validateCheckups(backup.checkups) : []);
   } catch {
     backupStatus.textContent = '无法导入。请选择「吃药服务」导出的 JSON 备份。';
   } finally {
@@ -731,7 +733,7 @@ byId('file').onchange = async event => {
   }
 };
 
-async function mergeBackup(records, medicines, status, visits = []) {
+async function mergeBackup(records, medicines, status, visits = [], checkups = []) {
   return update(state => {
     const medicineIds = new Set(state.medicines.map(item => item.id));
     const merged = [...state.medicines, ...medicines.filter(item => !medicineIds.has(item.id))];
@@ -741,7 +743,7 @@ async function mergeBackup(records, medicines, status, visits = []) {
     }
     const recordIds = new Set(state.records.map(item => item.id));
     const visitIds = new Set((state.visits ?? []).map(item => item.id));
-    return { ...state, medicines: merged, records: [...state.records, ...records.filter(item => !recordIds.has(item.id))], visits: [...(state.visits ?? []), ...visits.filter(item => !visitIds.has(item.id))] };
+    return { ...state, medicines: merged, records: [...state.records, ...records.filter(item => !recordIds.has(item.id))], visits: [...(state.visits ?? []), ...visits.filter(item => !visitIds.has(item.id))], checkups: mergeCheckups(state.checkups ?? [], checkups) };
   }, '已合并到云端，重复记录已跳过。', status);
 }
 
@@ -786,6 +788,7 @@ async function showAccount(session) {
   cloudState = null;
   cloudRevision = -1;
   visitsUI.reset();
+  checkupsUI.reset();
   byId('journal').hidden = true;
   editor.close();
   medicineEditor.close();
@@ -868,6 +871,7 @@ byId('migrate-local').onclick = async () => {
   }
 };
 const visitsUI = initVisits({ loadState, update });
+const checkupsUI = initCheckups({ loadState, update });
 const emailUI = initEmailAuth({ client, onSession:showAccount, waitForWrites:()=>writeQueue, getCurrentUser:()=>signedInUser });
 
 client.auth.onAuthStateChange((event, session) => {

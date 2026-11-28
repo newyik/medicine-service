@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#121312" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <title>吃药服务</title>
-<link rel="stylesheet" href="style.css?v=20261117-ios">
-<script type="module" src="app.js?v=20261122-cache-1"></script>
+<link rel="stylesheet" href="style.css?v=20261128-checkups">
+<script type="module" src="app.js?v=20261128-checkups"></script>
 </head>
 <body>
 <div class="session-startup" id="session-startup">
@@ -20,7 +20,7 @@
 <header class="hero">
 <div>
 <p class="eyebrow"><span aria-hidden="true">✦</span> 个人健康记录</p>
-<div class="hero-title-row"><h1>吃药服务</h1><a class="visit-entry-link" id="visit-link" href="#visits">看病记录 <span aria-hidden="true">›</span></a></div>
+<div class="hero-title-row"><h1>吃药服务</h1><div class="hero-links"><a class="visit-entry-link" id="checkup-link" href="#checkups">体检报告 <span aria-hidden="true">›</span></a><a class="visit-entry-link" id="visit-link" href="#visits">看病记录 <span aria-hidden="true">›</span></a></div></div>
 <p class="journal-tagline">吃了什么、什么时候吃的，一点就记下。</p><div class="login-story"><h2>把照顾自己，<br>变成一个小习惯。</h2><p>用药、预约、每一次就诊，<br>都在自己的小本本里安心记好。</p><div class="login-features"><span>用药记录</span><span>就诊日历</span><span>多端同步</span></div></div>
 </div>
 <svg class="hero-art" viewBox="0 0 188 148" aria-hidden="true" focusable="false">
@@ -86,9 +86,15 @@
 </div>
 <section id="visits-page" hidden aria-labelledby="visits-heading">
 <a class="back-link" href="#">‹ 返回用药记录</a>
-<div class="visits-compact"><div><h2 id="visits-heading">看病记录</h2><p>预约安排和就诊记录，分开记清楚。</p></div><div class="visits-compact-actions"><button id="visit-add" class="primary">＋ 记就诊</button><button id="appointment-add">＋ 预约</button></div></div>
+<div class="visits-compact"><div><h2 id="visits-heading">看病记录</h2><p>预约安排和就诊记录，分开记清楚。</p></div><div class="visits-compact-actions"><button id="visit-add" class="primary">＋ 记就诊</button><button id="appointment-add">＋ 预约</button><a class="visit-entry-link" href="#checkups">体检报告 ›</a></div></div>
 <section class="card visit-calendar illustrated-card clinic-notebook" aria-labelledby="visit-calendar-title"><div class="visit-calendar-heading"><h2 id="visit-calendar-title">就诊日历</h2><button id="visit-calendar-today">回本月</button></div><div class="calendar-nav"><button id="visit-calendar-prev" aria-label="就诊日历上个月">‹</button><h3 id="visit-calendar-month"></h3><button id="visit-calendar-next" aria-label="就诊日历下个月">›</button></div><div class="calendar-grid weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="calendar-grid" id="visit-calendar-days"></div><p class="visit-calendar-legend"><span><small class="completed-mark">●</small> 就诊记录</span><span><small class="planned-mark">●</small> 预约／复诊</span><small>点日期查看，再点取消</small></p></section>
 <section class="card"><div class="visit-tabs" role="group" aria-label="按就诊状态筛选"><button id="visits-tab-completed" aria-pressed="true">就诊记录</button><button id="visits-tab-planned" aria-pressed="false">预约／复诊</button></div><label for="visits-filter" class="visually-hidden">搜索就诊记录</label><input type="search" id="visits-filter" placeholder="搜索医院、科室或记录关键词"><div class="visit-list-heading"><h3 id="visit-list-title">预约与复诊安排</h3><button id="visit-calendar-clear" hidden>查看所有日期</button></div><div id="visits-list"></div><details id="cancelled-appointments" hidden></details></section>
+</section>
+<section id="checkups-page" hidden aria-labelledby="checkups-heading">
+<div class="visits-compact"><div><h2 id="checkups-heading">体检报告</h2><p>每次的化验结果都存这里，纸质单可以不留了。</p></div><div class="visits-compact-actions"><button id="checkup-import-open" class="primary">粘贴导入</button><button id="checkup-add">＋ 手动新建</button></div></div>
+<p id="checkup-action-status" role="status"></p>
+<section class="card"><div class="visit-list-heading"><h3>全部报告</h3><label class="checkup-toggle"><input type="checkbox" id="checkup-abnormal-only"> 只看偏高偏低</label></div><p class="field-hint">点某一项可以看它历次的变化。</p><div id="checkups-list"></div></section>
+<section class="card"><h3>和 AI 一起用</h3><p class="field-hint">把报告照片发给 AI，附上格式说明，让它整理好再粘贴导入。也可以把全部数据复制给 AI 帮你看趋势。</p><div class="record-actions"><button id="checkup-copy-guide">复制格式说明</button><button id="checkup-copy-all">复制全部体检数据</button></div></section>
 </section>
 <section class="card account-card" aria-labelledby="account-title">
 <p class="login-kicker">YOUR PERSONAL HEALTH JOURNAL</p><h2 id="account-title">账号与同步</h2>
@@ -119,6 +125,30 @@
 </div><details><summary>其他补充</summary><label for="visit-address">医院地址</label><input id="visit-address" maxlength="300"><label for="visit-notes">备注</label><textarea id="visit-notes" maxlength="3000" rows="3" placeholder="其他想留下的小笔记"></textarea></details>
 <p id="visit-status" role="status"></p><div class="actions"><button id="visit-save" class="primary" type="submit">保存看病记录</button></div>
 </form>
+</dialog>
+<dialog id="checkup-editor">
+<form id="checkup-form">
+<div class="visit-form-head"><h2 id="checkup-editor-title">新建体检报告</h2><button type="button" id="checkup-cancel" aria-label="关闭">×</button></div>
+<div class="visit-field-pair"><div><label for="checkup-date">采血日期 <span class="required-mark">必填</span></label><input id="checkup-date" type="date" required></div><div><label for="checkup-reportDate">出报告日期</label><input id="checkup-reportDate" type="date"></div></div>
+<label for="checkup-hospital">医院</label><input id="checkup-hospital" maxlength="200">
+<div class="visit-field-pair"><div><label for="checkup-department">科室</label><input id="checkup-department" maxlength="200"></div><div><label for="checkup-lab">检验公司</label><input id="checkup-lab" maxlength="200"></div></div>
+<h3>检查项目</h3><p class="field-hint">参考范围写成「3.5~5.2」或「40以下」，标记选「自动」就会自己判断偏高偏低。</p>
+<div id="checkup-items"></div><button type="button" id="checkup-add-row">＋ 加一项</button>
+<label for="checkup-notes">备注</label><textarea id="checkup-notes" maxlength="3000" rows="2"></textarea>
+<p id="checkup-status" role="status"></p><div class="actions"><button class="primary" type="submit">保存报告</button></div>
+</form>
+</dialog>
+<dialog id="checkup-import">
+<h2>粘贴导入体检报告</h2>
+<p class="field-hint">把 AI 整理好的内容整段粘贴进来，先点「检查」看对不对，再保存。</p>
+<label for="checkup-import-text" class="visually-hidden">导入内容</label><textarea id="checkup-import-text" rows="10" placeholder='{"checkups":[{"date":"…","items":[…]}]}'></textarea>
+<div id="checkup-import-preview" aria-live="polite"></div>
+<p id="checkup-import-status" role="status"></p>
+<div class="actions"><button type="button" id="checkup-import-cancel">取消</button><button type="button" id="checkup-import-check">检查</button><button type="button" class="primary" id="checkup-import-save" disabled>保存</button></div>
+</dialog>
+<dialog id="checkup-trend">
+<div class="visit-form-head"><h2 id="checkup-trend-title">变化</h2><button type="button" id="checkup-trend-close" aria-label="关闭">×</button></div>
+<div id="checkup-trend-body"></div>
 </dialog>
 <dialog id="medicine-editor">
 <form id="medicine-form">

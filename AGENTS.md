@@ -13,7 +13,7 @@
 
 | 部分 | 位置 | 是什么 |
 |---|---|---|
-| 网页 | 根目录：`index.html`、`style.css`、`app.js`、`visits.js`、`email-auth.js`、`journal-cache.js`、`config.js`、`assets/` | 全部功能都在这里（用药、看病、预约提醒、邮箱登录、云同步）。线上：https://newyik.github.io/medicine-service/ |
+| 网页 | 根目录：`index.html`、`style.css`、`app.js`、`visits.js`、`checkups.js`（体检报告）、`email-auth.js`、`journal-cache.js`、`config.js`、`assets/` | 全部功能都在这里（用药、看病、预约提醒、邮箱登录、云同步）。线上：https://newyik.github.io/medicine-service/ |
 | Mac 外壳 | `apps/mac/` | Swift 写的 WebView 外壳（`App.swift`，纯 AppKit：原生工具栏切换用药/看病、＋新建菜单、菜单栏快捷键，给网页 `<html>` 加 `native-mac` 让网页隐藏自己的顶栏），网址来自 `config.json` |
 | iPhone 外壳 | `apps/ios/` | Swift/UIKit WebView 外壳，加载线上网页，提供原生导航栏、标签栏、下拉刷新、分享导出；会给 `<html>` 加 `native-ios` 类 |
 | 安装说明 | `apps/docs/iPhone安装说明.md` | Sideloadly 侧载步骤 |
@@ -31,7 +31,7 @@
 ## 旧规矩（必须遵守）
 
 - **没有构建步骤。** 直接改 `app.js` / `visits.js` / `email-auth.js` / `index.html` / `style.css`，不要引入打包工具或框架。
-- **数据库结构在 `migrations/`，按文件名顺序执行**（`000-schema.sql` → `preserve-visits.sql`）。新增结构就加新文件，文件名要能排在已有文件之后。
+- **数据库结构在 `migrations/`，按文件名顺序执行**（`000-schema.sql` → `preserve-visits.sql` → `together-list-setup.sql` → `zz01-preserve-checkups.sql`）。新增结构就加新文件，文件名要能排在已有文件之后。
 - **每个账号在 `medicine_journals` 表里只有一行 JSON**，保存时带版本号检查（乐观锁），版本冲突要处理，不能盲目覆盖。
 - **仍开着旧版页面的设备会把数据写回来。** 新增字段时必须考虑：旧客户端不认识这个字段，保存时会不会把它冲掉。`migrations/preserve-visits.sql` 就是为此加的，它让数据库保留旧客户端不认识的字段。以后新增顶层字段，也要用同样的方法保护。
 - **提醒只在页面打开时显示，没有后台推送。** 不要说成有锁屏或后台通知。
@@ -70,3 +70,9 @@ apps/ios/build.sh   # 生成 apps/ios/吃药服务-iPhone-待签名.ipa
 ```
 
 生成的是未签名 IPA，再用 Sideloadly 侧载签名，步骤见 `apps/docs/iPhone安装说明.md`。不要改 bundle ID（免费开发账号最多 3 个侧载 App）。目标 iOS 16 以上。
+
+## 体检报告
+
+- 数据在账号 JSON 的顶层字段 `checkups`，逻辑在 `checkups.js`。`zz01-preserve-checkups.sql` 让保存时保留新数据里没带的顶层字段，**必须先在数据库执行它，再推送带体检功能的网页**。
+- 录入方式：用户把报告照片发给 AI，AI 按页面「复制格式说明」的 JSON 格式整理，用户在「粘贴导入」里粘贴。真实化验数据不能写进仓库。
+- Mac/iPhone 外壳隐藏网页顶栏，所以看病记录页里也放了「体检报告 ›」入口。

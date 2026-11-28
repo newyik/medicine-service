@@ -33,16 +33,19 @@ private let bridgeLate = """
 (function(){
   const post=()=>{try{webkit.messageHandlers.shell.postMessage({
     signedIn:!document.body.classList.contains('signed-out'),
-    visits:location.hash==='#visits'})}catch(e){}};
+    page:['visits','checkups'].indexOf(location.hash.slice(1))+1})}catch(e){}};
   new MutationObserver(post).observe(document.body,{attributes:true,attributeFilter:['class']});
   addEventListener('hashchange',post); post();
 })();
 """
 
 /// 切到某个页面，再点网页里的某个按钮（按钮 id 见 medicine-service/index.html）
-private func clickScript(visits: Bool?, id: String?) -> String {
+/// 0 用药、1 看病、2 体检，对应网页地址里的 #… 
+let pageHashes = ["", "visits", "checkups"]
+let pageTitles = ["用药记录", "看病记录", "体检报告"]
+private func clickScript(page: Int?, id: String?) -> String {
     var js = "(function(){"
-    if let v = visits { js += "const want=\(v);if((location.hash==='#visits')!==want){location.hash=want?'visits':'';}" }
+    if let p = page { js += "const want='\(pageHashes[p])';if(location.hash.slice(1)!==want){location.hash=want;}" }
     if let id { js += "setTimeout(()=>{const b=document.getElementById('\(id)');if(b&&!b.closest('[hidden]'))b.click();},80);" }
     js += "})();"
     return js
@@ -54,7 +57,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuI
     WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate {
 
     let webView: WKWebView
-    private let segmented = NSSegmentedControl(labels: ["用药", "看病"], trackingMode: .selectOne, target: nil, action: nil)
+    private let segmented = NSSegmentedControl(labels: ["用药", "看病", "体检"], trackingMode: .selectOne, target: nil, action: nil)
     private let spinner = NSProgressIndicator()
     private let errorView = NSStackView()
     private var signedIn = false
@@ -158,6 +161,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuI
         segmented.selectedSegment = 0
         segmented.setWidth(64, forSegment: 0)
         segmented.setWidth(64, forSegment: 1)
+        segmented.setWidth(64, forSegment: 2)
         window?.toolbar = tb
         updateChrome()
     }
@@ -175,7 +179,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuI
             let item = NSToolbarItem(itemIdentifier: id)
             item.view = segmented
             item.label = "页面"
-            item.toolTip = "在用药记录和看病记录之间切换（⌘1 / ⌘2）"
+            item.toolTip = "切换用药、看病、体检（⌘1 / ⌘2 / ⌘3）"
             return item
         case Item.reload:
             let item = NSToolbarItem(itemIdentifier: id)
@@ -205,18 +209,18 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuI
             if #available(macOS 15.0, *) { item.isHidden = !signedIn } else { item.isEnabled = signedIn }
         }
         segmented.isEnabled = signedIn
-        window?.subtitle = signedIn ? (segmented.selectedSegment == 1 ? "看病记录" : "用药记录") : ""
+        window?.subtitle = signedIn ? pageTitles[max(0, segmented.selectedSegment)] : ""
     }
 
     // MARK: 动作（菜单和工具栏共用）
 
     @objc func switchPage(_ sender: Any?) {
-        let toVisits: Bool
-        if let s = sender as? NSSegmentedControl { toVisits = s.selectedSegment == 1 }
-        else if let m = sender as? NSMenuItem { toVisits = m.tag == 1 }
-        else { toVisits = false }
-        segmented.selectedSegment = toVisits ? 1 : 0
-        run(clickScript(visits: toVisits, id: nil))
+        var page = 0
+        if let s = sender as? NSSegmentedControl { page = s.selectedSegment }
+        else if let m = sender as? NSMenuItem { page = m.tag }
+        page = min(max(page, 0), 2)
+        segmented.selectedSegment = page
+        run(clickScript(page: page, id: nil))
         updateChrome()
     }
     @objc func reloadPage(_ sender: Any?) {
@@ -229,14 +233,16 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuI
             webView.reload()
         }
     }
-    @objc func newMedicineRecord(_ sender: Any?) { run(clickScript(visits: false, id: "manual")) }
-    @objc func newMedicine(_ sender: Any?) { run(clickScript(visits: false, id: "add-med")) }
-    @objc func newVisit(_ sender: Any?) { run(clickScript(visits: true, id: "visit-add")) }
-    @objc func newAppointment(_ sender: Any?) { run(clickScript(visits: true, id: "appointment-add")) }
-    @objc func exportBackup(_ sender: Any?) { run(clickScript(visits: false, id: "export")) }
-    @objc func importBackup(_ sender: Any?) { run(clickScript(visits: false, id: "import")) }
+    @objc func newMedicineRecord(_ sender: Any?) { run(clickScript(page: 0, id: "manual")) }
+    @objc func newMedicine(_ sender: Any?) { run(clickScript(page: 0, id: "add-med")) }
+    @objc func newVisit(_ sender: Any?) { run(clickScript(page: 1, id: "visit-add")) }
+    @objc func newAppointment(_ sender: Any?) { run(clickScript(page: 1, id: "appointment-add")) }
+    @objc func newCheckup(_ sender: Any?) { run(clickScript(page: 2, id: "checkup-add")) }
+    @objc func importCheckup(_ sender: Any?) { run(clickScript(page: 2, id: "checkup-import-open")) }
+    @objc func exportBackup(_ sender: Any?) { run(clickScript(page: 0, id: "export")) }
+    @objc func importBackup(_ sender: Any?) { run(clickScript(page: 0, id: "import")) }
     @objc func findInPage(_ sender: Any?) {
-        run(clickScript(visits: true, id: nil) + "setTimeout(()=>document.getElementById('visits-filter')?.focus(),120);")
+        run(clickScript(page: 1, id: nil) + "setTimeout(()=>document.getElementById('visits-filter')?.focus(),120);")
     }
     @objc func zoomIn(_ sender: Any?) { webView.pageZoom = min(webView.pageZoom + 0.1, 2) }
     @objc func zoomOut(_ sender: Any?) { webView.pageZoom = max(webView.pageZoom - 0.1, 0.6) }
@@ -251,7 +257,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuI
             item.state = (item.tag == segmented.selectedSegment) ? .on : .off
             return signedIn
         case #selector(newMedicineRecord(_:)), #selector(newMedicine(_:)), #selector(newVisit(_:)),
-             #selector(newAppointment(_:)), #selector(exportBackup(_:)), #selector(importBackup(_:)),
+             #selector(newAppointment(_:)), #selector(newCheckup(_:)), #selector(importCheckup(_:)), #selector(exportBackup(_:)), #selector(importBackup(_:)),
              #selector(findInPage(_:)):
             return signedIn
         default:
@@ -273,7 +279,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSMenuI
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any] else { return }
         signedIn = body["signedIn"] as? Bool ?? false
-        segmented.selectedSegment = (body["visits"] as? Bool ?? false) ? 1 : 0
+        segmented.selectedSegment = min(max(body["page"] as? Int ?? 0, 0), 2)
         updateChrome()
     }
 
@@ -397,6 +403,9 @@ enum AppMenus {
         m.addItem(.separator())
         m.addItem(item("记一次就诊", #selector(MainWindowController.newVisit(_:))))
         m.addItem(item("添加预约", #selector(MainWindowController.newAppointment(_:))))
+        m.addItem(.separator())
+        m.addItem(item("粘贴导入体检报告", #selector(MainWindowController.importCheckup(_:))))
+        m.addItem(item("手动新建体检报告", #selector(MainWindowController.newCheckup(_:))))
         return m
     }
 
@@ -444,6 +453,7 @@ enum AppMenus {
         let view = NSMenu(title: "显示")
         view.addItem(item("用药记录", #selector(MainWindowController.switchPage(_:)), "1", tag: 0))
         view.addItem(item("看病记录", #selector(MainWindowController.switchPage(_:)), "2", tag: 1))
+        view.addItem(item("体检报告", #selector(MainWindowController.switchPage(_:)), "3", tag: 2))
         view.addItem(.separator())
         view.addItem(item("重新载入", #selector(MainWindowController.reloadPage(_:)), "r"))
         view.addItem(.separator())

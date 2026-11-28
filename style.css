@@ -531,3 +531,10 @@ dialog[open]::backdrop { animation: fade .2s ease-out; }
 .checkup-trend-row small { color: var(--ink-3); }
 .visits-view #journal { display: none !important; }
 .checkup-chart { max-height: 200px; }
+.native-mac .visits-compact-actions a, .native-ios .visits-compact-actions a { display: none; }
+.hero-title-row h1 { white-space: nowrap; }
+@media (max-width: 480px) {
+  .hero-links { flex-wrap: nowrap; gap: 6px; }
+  .hero-links .visit-entry-link { min-height: 32px; padding: 5px 10px; font-size: .8125rem; }
+  .hero-title-row h1 { font-size: 1.375rem; }
+}

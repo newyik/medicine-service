@@ -51,7 +51,7 @@ private let bridgeEarly = "document.documentElement.classList.add('native-ios');
 private let bridgeLate = """
 (function(){
   const post=m=>{try{webkit.messageHandlers.shell.postMessage(m)}catch(e){}};
-  const state=()=>post({signedIn:!document.body.classList.contains('signed-out'),visits:location.hash==='#visits'});
+  const state=()=>post({signedIn:!document.body.classList.contains('signed-out'),page:['visits','checkups'].indexOf(location.hash.slice(1))+1});
   new MutationObserver(state).observe(document.body,{attributes:true,attributeFilter:['class']});
   addEventListener('hashchange',state); state();
   const watch=id=>{const el=document.getElementById(id);if(!el)return;let last='';
@@ -61,9 +61,12 @@ private let bridgeLate = """
 })();
 """
 
-private func clickScript(visits: Bool?, id: String?) -> String {
+/// 0 用药、1 看病、2 体检，对应网页地址里的 #… 
+let pageHashes = ["", "visits", "checkups"]
+let pageTitles = ["用药记录", "看病记录", "体检报告"]
+private func clickScript(page: Int?, id: String?) -> String {
     var js = "(function(){"
-    if let v = visits { js += "const want=\(v);if((location.hash==='#visits')!==want){location.hash=want?'visits':'';}" }
+    if let p = page { js += "const want='\(pageHashes[p])';if(location.hash.slice(1)!==want){location.hash=want;}" }
     if let id { js += "setTimeout(()=>{const b=document.getElementById('\(id)');if(b&&!b.closest('[hidden]'))b.click();},80);" }
     js += "})();"
     return js
@@ -115,7 +118,9 @@ final class WebsiteController: UIViewController, WKNavigationDelegate, WKUIDeleg
         let meds = UITabBarItem(title: "用药", image: UIImage(systemName: "pills"), selectedImage: UIImage(systemName: "pills.fill"))
         let visits = UITabBarItem(title: "看病", image: UIImage(systemName: "stethoscope"), tag: 1)
         meds.tag = 0
-        tabBar.items = [meds, visits]
+        let checkups = UITabBarItem(title: "体检", image: UIImage(systemName: "drop"), tag: 2)
+        checkups.selectedImage = UIImage(systemName: "drop.fill")
+        tabBar.items = [meds, visits, checkups]
         tabBar.selectedItem = meds
         tabBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tabBar)
@@ -132,11 +137,15 @@ final class WebsiteController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
         // 右上角“＋”新建菜单
         let addMenu = UIMenu(children: [
-            UIAction(title: "补记一次用药", image: UIImage(systemName: "clock.arrow.circlepath")) { [weak self] _ in self?.run(clickScript(visits: false, id: "manual")) },
-            UIAction(title: "添加药物", image: UIImage(systemName: "pills")) { [weak self] _ in self?.run(clickScript(visits: false, id: "add-med")) },
+            UIAction(title: "补记一次用药", image: UIImage(systemName: "clock.arrow.circlepath")) { [weak self] _ in self?.run(clickScript(page: 0, id: "manual")) },
+            UIAction(title: "添加药物", image: UIImage(systemName: "pills")) { [weak self] _ in self?.run(clickScript(page: 0, id: "add-med")) },
             UIMenu(options: .displayInline, children: [
-                UIAction(title: "记一次就诊", image: UIImage(systemName: "cross.case")) { [weak self] _ in self?.run(clickScript(visits: true, id: "visit-add")) },
-                UIAction(title: "添加预约", image: UIImage(systemName: "calendar.badge.plus")) { [weak self] _ in self?.run(clickScript(visits: true, id: "appointment-add")) },
+                UIAction(title: "记一次就诊", image: UIImage(systemName: "cross.case")) { [weak self] _ in self?.run(clickScript(page: 1, id: "visit-add")) },
+                UIAction(title: "添加预约", image: UIImage(systemName: "calendar.badge.plus")) { [weak self] _ in self?.run(clickScript(page: 1, id: "appointment-add")) },
+            ]),
+            UIMenu(options: .displayInline, children: [
+                UIAction(title: "粘贴导入体检报告", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in self?.run(clickScript(page: 2, id: "checkup-import-open")) },
+                UIAction(title: "手动新建体检报告", image: UIImage(systemName: "drop")) { [weak self] _ in self?.run(clickScript(page: 2, id: "checkup-add")) },
             ]),
         ])
         navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "plus"), menu: addMenu)
@@ -157,14 +166,14 @@ final class WebsiteController: UIViewController, WKNavigationDelegate, WKUIDeleg
     func applyChrome(animated: Bool) {
         navigationController?.setNavigationBarHidden(!signedIn, animated: animated)
         tabBar.isHidden = !signedIn
-        title = tabBar.selectedItem?.tag == 1 ? "看病记录" : "用药记录"
+        title = pageTitles[tabBar.selectedItem?.tag ?? 0]
     }
 
     // 标签栏切换
     func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
         tap.selectionChanged()
-        run(clickScript(visits: item.tag == 1, id: nil) + "window.scrollTo(0,0);")
-        title = item.tag == 1 ? "看病记录" : "用药记录"
+        run(clickScript(page: item.tag, id: nil) + "window.scrollTo(0,0);")
+        title = pageTitles[item.tag]
     }
 
     // 网页 → 外壳
@@ -173,8 +182,8 @@ final class WebsiteController: UIViewController, WKNavigationDelegate, WKUIDeleg
         if body["haptic"] != nil { haptic.notificationOccurred(.success); return }
         let wasSignedIn = signedIn
         signedIn = body["signedIn"] as? Bool ?? false
-        let onVisits = body["visits"] as? Bool ?? false
-        tabBar.selectedItem = tabBar.items?[onVisits ? 1 : 0]
+        let page = min(max(body["page"] as? Int ?? 0, 0), 2)
+        tabBar.selectedItem = tabBar.items?[page]
         applyChrome(animated: wasSignedIn != signedIn)
     }
 

@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#121312" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <title>吃药服务</title>
-<link rel="stylesheet" href="style.css?v=20261128-safe">
-<script type="module" src="app.js?v=20261128-safe"></script>
+<link rel="stylesheet" href="style.css?v=20261129-details">
+<script type="module" src="app.js?v=20261129-details"></script>
 </head>
 <body>
 <div class="session-startup" id="session-startup">
@@ -156,6 +156,7 @@
 <h2 id="medicine-title">添加药物</h2>
 <label for="medicine-name">药物名称或代号</label>
 <input id="medicine-name" maxlength="60" required>
+<details id="medicine-detail-fields"><summary>药品资料（选填）</summary><label for="medicine-productName">正式名称</label><input id="medicine-productName" maxlength="200"><label for="medicine-ingredient">成分</label><input id="medicine-ingredient" maxlength="200"><label for="medicine-strength">规格／含量</label><input id="medicine-strength" maxlength="100"><label for="medicine-brand">品牌／厂家</label><input id="medicine-brand" maxlength="120"><label for="medicine-notes">备注</label><input id="medicine-notes" maxlength="1000"></details>
 <label for="medicine-kind">类型</label>
 <select id="medicine-kind"></select>
 <label id="medicine-icon-label">药物图标</label>

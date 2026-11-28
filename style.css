@@ -548,3 +548,8 @@ dialog[open]::backdrop { animation: fade .2s ease-out; }
 .checkup-confirm input { width: auto; min-height: 0; margin: 3px 0 0; }
 #checkups-deleted { margin-top: 14px; }
 #checkup-import-preview h3 { font-size: .9375rem; margin: 14px 0 4px; }
+
+.medicine-detail { margin-top: 6px; font-size: .78rem; color: var(--ink-2); }
+.medicine-detail summary { min-height: 28px; padding: 4px 0; }
+.medicine-detail p { margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#medicine-detail-fields { margin: 12px 0; }

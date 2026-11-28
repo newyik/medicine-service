@@ -10,9 +10,10 @@ test('reject malformed and oversized fields',()=>{assert.throws(()=>validateVisi
 test('reject negative and nonnumeric costs without coercing values',()=>{assert.throws(()=>validateVisits([{...visit(),cost:'-20'}]));assert.throws(()=>validateVisits([{...visit(),cost:'NaN'}]));assert.throws(()=>validateVisits([{...visit(),cost:1200}]));});
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { validateMedicineDetails } from '../medicine-details.js';
 const app = readFileSync(new URL('../app.js',import.meta.url),'utf8');
 function journalContext(state) {
-  const context = vm.createContext({validateVisits, validateCheckups, mergeCheckups, fixtureState:state, structuredClone});
+  const context = vm.createContext({validateMedicineDetails, validateVisits, validateCheckups, mergeCheckups, fixtureState:state, structuredClone});
   const constants=app.slice(app.indexOf('const medicineTypes'),app.indexOf('let calendarMedicineId'));
   const validation=app.slice(app.indexOf('function validate(records)'),app.indexOf('function loadState()'));
   const merging=app.slice(app.indexOf('async function mergeBackup('),app.indexOf('let refreshing'));

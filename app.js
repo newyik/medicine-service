@@ -1,3 +1,4 @@
+import { medicineDetailFields, validateMedicineDetails } from './medicine-details.js?v=20261129-details';
 import { createJournalCache } from './journal-cache.js?v=20261122-cache-1';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
@@ -130,7 +131,7 @@ function validateMedicines(medicines) {
 
 function checkedState(stored) {
   if (Array.isArray(stored)) return { records: validate(stored), medicines: [], visits: [], checkups: [] };
-  return { records: validate(stored.records), medicines: validateMedicines(stored.medicines), visits: validateVisits(stored.visits), checkups: validateCheckups(stored.checkups) };
+  return { records: validate(stored.records), medicines: validateMedicines(stored.medicines), visits: validateVisits(stored.visits), checkups: validateCheckups(stored.checkups), medicineDetails: validateMedicineDetails(stored.medicineDetails) };
 }
 
 function loadState() {
@@ -188,6 +189,16 @@ function renderMedicines(medicines, today, records) {
       : '还没记过这款药');
     recent.className = 'medicine-recent';
     name.append(recent);
+    const detail = loadState().medicineDetails?.[medicine.id];
+    if (detail && Object.values(detail).some(Boolean)) {
+      const disclosure = element('details', '');
+      disclosure.className = 'medicine-detail';
+      disclosure.append(element('summary', '药品资料'));
+      for (const [key, [label]] of Object.entries(medicineDetailFields)) {
+        if (detail[key]) disclosure.append(element('p', label + '：' + detail[key]));
+      }
+      name.append(disclosure);
+    }
     const controls = element('div', '');
     controls.className = 'med-controls';
     const quantity = element('input', '');
@@ -618,6 +629,9 @@ function openMedicineEditor(medicine) {
   byId('medicine-title').textContent = medicine ? '修改药物' : '添加药物';
   byId('medicine-save').textContent = medicine ? '保存' : '添加';
   byId('medicine-name').value = medicine?.name ?? '';
+  const detail = loadState().medicineDetails?.[medicine?.id] ?? {};
+  for (const key of Object.keys(medicineDetailFields)) byId('medicine-' + key).value = detail[key] ?? '';
+  byId('medicine-detail-fields').open = Object.values(detail).some(Boolean);
   kindPicker.value = medicine?.kind ?? 'oral';
   kindPicker.disabled = Boolean(medicine);
   iconPicker.value = medicine?.icon ?? '';
@@ -635,6 +649,7 @@ byId('medicine-form').onsubmit = async event => {
     status.textContent = '请输入药物名称或代号。';
     return;
   }
+  const detail = Object.fromEntries(Object.keys(medicineDetailFields).map(key => [key, byId('medicine-' + key).value.trim()]));
   const medicineId = editingMedicineId;
   const newId = makeRecord(0).id;
   const kind = kindPicker.value;
@@ -651,6 +666,7 @@ byId('medicine-form').onsubmit = async event => {
     } else {
       state.medicines.push({ id: newId, name, kind, icon: icon || defaultIcon(kind) });
     }
+    state.medicineDetails = { ...state.medicineDetails, [medicineId || newId]: detail };
     return state;
   }, medicineId ? '已保存「' + name + '」。' : '已添加 ' + name + '。', status);
   if (saved) medicineEditor.close();
@@ -701,7 +717,7 @@ byId('edit-form').onsubmit = async event => {
 const backupStatus = byId('backup-status');
 byId('export').onclick = () => {
   try {
-    const blob = new Blob([JSON.stringify({ version: 4, ...loadState() }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 5, ...loadState() }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = element('a', '');
     link.href = url;
@@ -722,10 +738,10 @@ byId('file').onchange = async event => {
   if (!file) return;
   try {
     const backup = JSON.parse(await file.text());
-    if (![1, 2, 3, 4].includes(backup?.version)) throw new Error('Invalid backup version');
+    if (![1, 2, 3, 4, 5].includes(backup?.version)) throw new Error('Invalid backup version');
     const imported = validate(backup.records);
     const importedMedicines = backup.version >= 2 ? validateMedicines(backup.medicines) : [];
-    await mergeBackup(imported, importedMedicines, backupStatus, backup.version >= 3 ? validateVisits(backup.visits) : [], backup.version >= 4 ? validateCheckups(backup.checkups) : []);
+    await mergeBackup(imported, importedMedicines, backupStatus, backup.version >= 3 ? validateVisits(backup.visits) : [], backup.version >= 4 ? validateCheckups(backup.checkups) : [], backup.version >= 5 ? validateMedicineDetails(backup.medicineDetails) : {});
   } catch {
     backupStatus.textContent = '无法导入。请选择「吃药服务」导出的 JSON 备份。';
   } finally {
@@ -733,7 +749,7 @@ byId('file').onchange = async event => {
   }
 };
 
-async function mergeBackup(records, medicines, status, visits = [], checkups = []) {
+async function mergeBackup(records, medicines, status, visits = [], checkups = [], medicineDetails = {}) {
   return update(state => {
     const medicineIds = new Set(state.medicines.map(item => item.id));
     const merged = [...state.medicines, ...medicines.filter(item => !medicineIds.has(item.id))];
@@ -743,7 +759,7 @@ async function mergeBackup(records, medicines, status, visits = [], checkups = [
     }
     const recordIds = new Set(state.records.map(item => item.id));
     const visitIds = new Set((state.visits ?? []).map(item => item.id));
-    return { ...state, medicines: merged, records: [...state.records, ...records.filter(item => !recordIds.has(item.id))], visits: [...(state.visits ?? []), ...visits.filter(item => !visitIds.has(item.id))], checkups: mergeCheckups(state.checkups ?? [], checkups) };
+    return { ...state, medicines: merged, records: [...state.records, ...records.filter(item => !recordIds.has(item.id))], visits: [...(state.visits ?? []), ...visits.filter(item => !visitIds.has(item.id))], checkups: mergeCheckups(state.checkups ?? [], checkups), medicineDetails: { ...medicineDetails, ...state.medicineDetails } };
   }, '已合并到云端，重复记录已跳过。', status);
 }
 

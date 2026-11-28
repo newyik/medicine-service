@@ -302,13 +302,18 @@ export function initCheckups({ loadState, update }) {
       for (const group of checkupGroups) {
         const items = checkup.items.filter(item => item.group === group && (!onlyAbnormal || ['high', 'low'].includes(itemStatus(item))));
         if (!items.length) continue;
-        detail.append(el('h4', group));
+        const heading = el('h4', group); heading.append(el('small', ' · ' + items.length + ' 项'));
+        detail.append(heading);
         const table = el('div', '', 'checkup-table');
         for (const item of items) {
           const state = itemStatus(item);
           const row = el('button', '', 'checkup-row flag-row-' + (state || 'none')); row.type = 'button';
           row.title = '点一下看历次变化';
-          row.append(el('span', item.name, 'checkup-name'), el('strong', item.value + (state === 'high' ? ' ↑' : state === 'low' ? ' ↓' : ''), 'flag-' + (state || 'none')), el('small', [item.unit, item.ref && '参考 ' + item.ref, item.note].filter(Boolean).join(' · ')));
+          const value = el('span', '', 'checkup-value flag-' + (state || 'none'));
+          value.append(el('strong', item.value + (state === 'high' ? ' ↑' : state === 'low' ? ' ↓' : '')), el('small', item.unit));
+          const name = el('span', '', 'checkup-name'); name.append(el('span', item.name));
+          if (item.note) name.append(el('small', item.note, 'checkup-note'));
+          row.append(name, value, el('small', item.ref ? '参考 ' + item.ref : '', 'checkup-ref'));
           row.onclick = () => showTrend(item);
           table.append(row);
         }

@@ -493,13 +493,17 @@ dialog[open]::backdrop { animation: fade .2s ease-out; }
 .hero-links { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .checkup-toggle input { width: auto; min-height: 0; margin: 0; padding: 0; }
 .checkup-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .8125rem; color: var(--ink-2); margin-top: 12px; }
-.checkup-entry h4 { margin: 14px 0 6px; font-size: .8125rem; color: var(--ink-3); }
-.checkup-table { display: grid; gap: 2px; }
-.checkup-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name value" "info info"; gap: 0 10px; width: 100%; text-align: left; min-height: 0; padding: 7px 10px; border-radius: 8px; border: 0; background: transparent; font-weight: 400; }
+.checkup-entry h4 { margin: 18px 0 6px; padding-bottom: 4px; font-size: .8125rem; color: var(--ink-2); border-bottom: 1px solid var(--line); }
+.checkup-entry h4 small { font-weight: 400; color: var(--ink-3); }
+.checkup-table { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2px 16px; }
+.checkup-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name value" "name ref"; align-items: center; gap: 0 12px; width: 100%; text-align: left; min-height: 0; padding: 6px 10px; border-radius: 8px; border: 0; background: transparent; font-weight: 400; }
 .checkup-row:hover:not(:disabled) { background: var(--fill); }
-.checkup-name { grid-area: name; color: var(--ink); font-size: .875rem; overflow-wrap: anywhere; }
-.checkup-row strong { grid-area: value; font-size: .9375rem; font-variant-numeric: tabular-nums; }
-.checkup-row small { grid-area: info; color: var(--ink-3); font-size: .75rem; }
+.checkup-name { grid-area: name; display: flex; flex-direction: column; color: var(--ink); font-size: .875rem; overflow-wrap: anywhere; }
+.checkup-note { font-size: .6875rem; color: var(--warn); }
+.checkup-value { grid-area: value; justify-self: end; white-space: nowrap; }
+.checkup-value strong { font-size: .9375rem; font-variant-numeric: tabular-nums; }
+.checkup-value small { margin-left: 3px; font-size: .6875rem; color: var(--ink-3); }
+.checkup-ref { grid-area: ref; justify-self: end; font-size: .6875rem; color: var(--ink-3); white-space: nowrap; }
 .flag-row-high { background: color-mix(in srgb, var(--danger) 9%, transparent); }
 .flag-row-low { background: color-mix(in srgb, #3a74c4 10%, transparent); }
 .flag-high { color: var(--danger); }

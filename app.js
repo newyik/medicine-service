@@ -2,7 +2,7 @@ import { createJournalCache } from './journal-cache.js?v=20261122-cache-1';
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { cloudConfig } from './config.js';
 import { initVisits, validateVisits } from './visits.js?v=20261128-checkups';
-import { initCheckups, validateCheckups, mergeCheckups } from './checkups.js?v=20261128-checkups';
+import { initCheckups, validateCheckups, mergeCheckups } from './checkups.js?v=20261128-safe';
 import { initEmailAuth } from './email-auth.js?v=20261114-email-1';
 
 const client = createClient(cloudConfig.url, cloudConfig.publicKey);

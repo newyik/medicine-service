@@ -33,6 +33,10 @@ export function validateCheckups(checkups = []) {
     const items = checkup.items ?? [];
     if (!Array.isArray(items) || items.length > 300) throw new Error('Invalid checkup items');
     result.items = items.map(validateItem);
+    if (checkup.deletedAt !== undefined && checkup.deletedAt !== null) {
+      if (typeof checkup.deletedAt !== 'number' || !Number.isFinite(checkup.deletedAt)) throw new Error('Invalid deletedAt');
+      result.deletedAt = checkup.deletedAt;
+    }
     return result;
   });
 }
@@ -118,6 +122,28 @@ export function parseCheckupImport(text, makeId = () => crypto.randomUUID()) {
   }
 }
 
+export const activeCheckups = (list = []) => list.filter(c => !c.deletedAt);
+export const deletedCheckups = (list = []) => list.filter(c => c.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
+
+// 导入前挑出可疑的地方，提醒用户对着纸质单再看一眼。
+export function checkupWarnings(checkup, existing = []) {
+  const warnings = [];
+  if (!checkup.hospital) warnings.push('没填医院');
+  const same = activeCheckups(existing).find(c => c.id !== checkup.id && c.date === checkup.date && c.hospital === checkup.hospital);
+  if (same) warnings.push(`${checkup.date} ${checkup.hospital || ''} 已经录过一份，可能重复了`);
+  const seen = new Set();
+  for (const item of checkup.items) {
+    const key = itemKey(item);
+    if (seen.has(key)) warnings.push(`「${item.name}」出现了两次`);
+    seen.add(key);
+    if (numericValue(item.value) === null && !/^[(（]?[-+±]/.test(item.value)) warnings.push(`「${item.name}」的数值「${item.value}」不是数字`);
+    if (!item.unit && numericValue(item.value) !== null && !/比|A\/G/i.test(item.name)) warnings.push(`「${item.name}」没有单位`);
+    if (!item.ref) warnings.push(`「${item.name}」没有参考范围`);
+  }
+  if (!checkup.items.length) warnings.push('一个检查项目都没有');
+  return warnings;
+}
+
 // 合并导入：id 相同的报告跳过，不覆盖已有内容。
 export function mergeCheckups(existing = [], incoming = []) {
   const ids = new Set(existing.map(item => item.id));
@@ -155,8 +181,11 @@ export function initCheckups({ loadState, update }) {
   }
   window.addEventListener('hashchange', () => render());
 
-  function checkups() {
+  function allCheckups() {
     try { return loadState().checkups ?? []; } catch { return []; }
+  }
+  function checkups() {
+    try { return activeCheckups(loadState().checkups ?? []); } catch { return []; }
   }
 
   function addRow(item = {}) {
@@ -203,7 +232,7 @@ export function initCheckups({ loadState, update }) {
   $('checkup-cancel').onclick = () => editor.close();
   $('checkup-add').onclick = () => open();
 
-  $('checkup-import-open').onclick = () => { $('checkup-import-text').value = ''; $('checkup-import-preview').replaceChildren(); $('checkup-import-save').disabled = true; importer.showModal(); };
+  $('checkup-import-open').onclick = () => { $('checkup-import-text').value = ''; $('checkup-import-preview').replaceChildren(); $('checkup-import-save').disabled = true; $('checkup-import-confirm-row').hidden = true; $('checkup-import-status').textContent = ''; importer.showModal(); };
   $('checkup-import-cancel').onclick = () => importer.close();
   let pending = [];
   $('checkup-import-check').onclick = () => {
@@ -212,15 +241,33 @@ export function initCheckups({ loadState, update }) {
       pending = parseCheckupImport($('checkup-import-text').value);
       for (const checkup of pending) {
         const s = summarize(checkup);
-        preview.append(el('p', `✓ ${checkup.date} ${checkup.hospital || '未填医院'} · ${s.total} 项` + (s.high || s.low ? `（偏高 ${s.high}、偏低 ${s.low}）` : '')));
+        preview.append(el('h3', `${checkup.date} ${checkup.hospital || '未填医院'} · ${s.total} 项` + (s.high || s.low ? `（偏高 ${s.high}、偏低 ${s.low}）` : '')));
+        const warnings = checkupWarnings(checkup, allCheckups());
+        if (warnings.length) {
+          const box = el('div', '', 'checkup-warnings'); box.append(el('strong', '⚠️ 请特别留意：'));
+          const ul = el('ul'); for (const w of warnings) ul.append(el('li', w)); box.append(ul); preview.append(box);
+        }
+        const table = el('table', '', 'checkup-verify');
+        const head = el('tr'); for (const h of ['分类', '检查名', '数值', '单位', '参考范围', '判断']) head.append(el('th', h));
+        table.append(head);
+        for (const item of checkup.items) {
+          const state = itemStatus(item), tr = el('tr', '', 'flag-row-' + (state || 'none'));
+          for (const v of [item.group, item.name + (item.note ? `（${item.note}）` : ''), item.value, item.unit, item.ref]) tr.append(el('td', v));
+          tr.append(el('td', statusText[state] || '—', 'flag-' + (state || 'none')));
+          table.append(tr);
+        }
+        preview.append(table);
       }
-      $('checkup-import-save').disabled = false;
+      $('checkup-import-confirm').checked = false;
+      $('checkup-import-confirm-row').hidden = false;
     } catch (error) {
       preview.append(el('p', error.message, 'checkup-error'));
+      $('checkup-import-confirm-row').hidden = true;
       $('checkup-import-save').disabled = true;
     }
   };
-  $('checkup-import-text').oninput = () => { $('checkup-import-save').disabled = true; };
+  $('checkup-import-text').oninput = () => { $('checkup-import-save').disabled = true; $('checkup-import-confirm-row').hidden = true; };
+  $('checkup-import-confirm').onchange = event => { $('checkup-import-save').disabled = !event.target.checked || !pending.length; };
   $('checkup-import-save').onclick = async () => {
     const incoming = pending;
     const saved = await update(state => ({ ...state, checkups: mergeCheckups(state.checkups ?? [], incoming) }), `已导入 ${incoming.length} 份报告（重复的已跳过）。`, $('checkup-import-status'));
@@ -274,9 +321,30 @@ export function initCheckups({ loadState, update }) {
     return svg;
   }
 
+  function renderDeleted() {
+    const box = $('checkups-deleted'); box.replaceChildren();
+    const removed = deletedCheckups(allCheckups());
+    box.hidden = !removed.length;
+    if (!removed.length) return;
+    box.append(el('summary', '最近删除 · ' + removed.length));
+    for (const checkup of removed) {
+      const row = el('div', '', 'cancelled-appointment');
+      row.append(el('span', `${checkup.date} ${checkup.hospital || '体检报告'} · ${checkup.items.length} 项`));
+      const restore = el('button', '恢复'); restore.type = 'button';
+      restore.onclick = () => update(state => ({ ...state, checkups: (state.checkups ?? []).map(c => { if (c.id !== checkup.id) return c; const { deletedAt, ...rest } = c; return rest; }) }), '已恢复体检报告。', status());
+      const purge = el('button', '彻底删除'); purge.type = 'button';
+      purge.onclick = () => {
+        if (!confirm(`彻底删除 ${checkup.date} 的体检报告？这一步不能在页面上恢复。`)) return;
+        update(state => ({ ...state, checkups: (state.checkups ?? []).filter(c => c.id !== checkup.id) }), '已彻底删除。', status());
+      };
+      row.append(restore, purge); box.append(row);
+    }
+  }
+
   function render() {
     route();
     if (page.hidden) return;
+    renderDeleted();
     const list = $('checkups-list'); list.replaceChildren();
     const all = [...checkups()].sort((a, b) => b.date.localeCompare(a.date));
     if (!all.length) {
@@ -324,8 +392,9 @@ export function initCheckups({ loadState, update }) {
       const edit = el('button', '修改'); edit.type = 'button'; edit.onclick = () => open(checkup);
       const remove = el('button', '删除'); remove.type = 'button';
       remove.onclick = () => {
-        if (!confirm(`删除 ${checkup.date} 的体检报告？删掉后找不回来（除非有备份）。`)) return;
-        update(state => ({ ...state, checkups: (state.checkups ?? []).filter(c => c.id !== checkup.id) }), '已删除体检报告。', status());
+        if (!confirm(`删除 ${checkup.date} 的体检报告？会先放进「最近删除」，可以恢复。`)) return;
+        const at = Date.now();
+        update(state => ({ ...state, checkups: (state.checkups ?? []).map(c => c.id === checkup.id ? { ...c, deletedAt: at } : c) }), '已移到「最近删除」，可以恢复。', status());
       };
       actions.append(edit, remove); detail.append(actions);
       card.append(detail);

@@ -31,7 +31,7 @@
 ## 旧规矩（必须遵守）
 
 - **没有构建步骤。** 直接改 `app.js` / `visits.js` / `email-auth.js` / `index.html` / `style.css`，不要引入打包工具或框架。
-- **数据库结构在 `migrations/`，按文件名顺序执行**（`000-schema.sql` → `preserve-visits.sql` → `together-list-setup.sql` → `zz01-preserve-checkups.sql`）。新增结构就加新文件，文件名要能排在已有文件之后。
+- **数据库结构在 `migrations/`，按文件名顺序执行**（`000-schema.sql` → `preserve-visits.sql` → `together-list-setup.sql` → `zz01-preserve-checkups.sql` → `zz02-journal-history.sql`）。新增结构就加新文件，文件名要能排在已有文件之后。
 - **每个账号在 `medicine_journals` 表里只有一行 JSON**，保存时带版本号检查（乐观锁），版本冲突要处理，不能盲目覆盖。
 - **仍开着旧版页面的设备会把数据写回来。** 新增字段时必须考虑：旧客户端不认识这个字段，保存时会不会把它冲掉。`migrations/preserve-visits.sql` 就是为此加的，它让数据库保留旧客户端不认识的字段。以后新增顶层字段，也要用同样的方法保护。
 - **提醒只在页面打开时显示，没有后台推送。** 不要说成有锁屏或后台通知。
@@ -76,3 +76,5 @@ apps/ios/build.sh   # 生成 apps/ios/吃药服务-iPhone-待签名.ipa
 - 数据在账号 JSON 的顶层字段 `checkups`，逻辑在 `checkups.js`。`zz01-preserve-checkups.sql` 让保存时保留新数据里没带的顶层字段，**必须先在数据库执行它，再推送带体检功能的网页**。
 - 录入方式：用户把报告照片发给 AI，AI 按页面「复制格式说明」的 JSON 格式整理，用户在「粘贴导入」里粘贴。真实化验数据不能写进仓库。
 - Mac/iPhone 外壳隐藏网页顶栏，所以看病记录页里也放了「体检报告 ›」入口。
+- 防丢：删除报告先打 `deletedAt` 标记进「最近删除」；`zz02-journal-history.sql` 让数据库每次保存前把上一版存进 `medicine_journal_history`，误删误覆盖可从这里找回。
+- 防错：粘贴导入必须逐项核对表格并勾选确认才能保存，`checkupWarnings` 会提示重复、缺单位、缺参考范围、非数字。

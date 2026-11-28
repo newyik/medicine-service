@@ -69,3 +69,24 @@ test('merging skips reports that already exist', () => {
   const merged = mergeCheckups(existing, validateCheckups([{ ...sample('a'), hospital: '改过' }, sample('b')]));
   assert.deepEqual(merged.map(c => [c.id, c.hospital]), [['a', '示例诊所'], ['b', '示例诊所']]);
 });
+
+import { checkupWarnings, activeCheckups, deletedCheckups } from '../checkups.js';
+test('warnings flag duplicates, missing units/ranges and non-numbers', () => {
+  const existing = validateCheckups([sample('old')]);
+  const [c] = validateCheckups([{ id: 'new', date: '2030-01-15', hospital: '示例诊所', items: [
+    { name: '示例A', value: '1', unit: 'U/L', ref: '1~2' }, { name: '示例 a', value: '2', unit: 'U/L', ref: '1~2' },
+    { name: '示例E', value: '五', unit: 'U/L', ref: '1~2' }, { name: '示例F', value: '3' }, { name: '尿示例', value: '(-)', ref: '(-)' }, { name: '示例 A/G 比', value: '1.5', ref: '1~2' } ] }]);
+  const w = checkupWarnings(c, existing).join('\n');
+  assert.match(w, /已经录过/); assert.match(w, /出现了两次/); assert.match(w, /不是数字/);
+  assert.match(w, /示例F」没有单位/); assert.match(w, /示例F」没有参考范围/);
+  assert.doesNotMatch(w, /尿示例/); assert.doesNotMatch(w, /A\/G 比」没有单位/);
+  assert.deepEqual(checkupWarnings(validateCheckups([sample('x', '2031-01-01')])[0], existing).filter(x => /录过/.test(x)), []);
+});
+test('soft-deleted reports keep their data and can be told apart', () => {
+  const list = validateCheckups([{ ...sample('a'), deletedAt: 123 }, sample('b')]);
+  assert.equal(list[0].deletedAt, 123); assert.equal(list[0].items.length, 4);
+  assert.deepEqual(activeCheckups(list).map(c => c.id), ['b']);
+  assert.deepEqual(deletedCheckups(list).map(c => c.id), ['a']);
+  assert.equal('deletedAt' in list[1], false);
+  assert.throws(() => validateCheckups([{ ...sample(), deletedAt: 'x' }]));
+});

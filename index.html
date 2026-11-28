@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#121312" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <title>吃药服务</title>
-<link rel="stylesheet" href="style.css?v=20261128-checkups">
-<script type="module" src="app.js?v=20261128-checkups"></script>
+<link rel="stylesheet" href="style.css?v=20261128-safe">
+<script type="module" src="app.js?v=20261128-safe"></script>
 </head>
 <body>
 <div class="session-startup" id="session-startup">
@@ -93,7 +93,7 @@
 <section id="checkups-page" hidden aria-labelledby="checkups-heading">
 <div class="visits-compact"><div><h2 id="checkups-heading">体检报告</h2><p>每次的化验结果都存这里，纸质单可以不留了。</p></div><div class="visits-compact-actions"><button id="checkup-import-open" class="primary">粘贴导入</button><button id="checkup-add">＋ 手动新建</button></div></div>
 <p id="checkup-action-status" role="status"></p>
-<section class="card"><div class="visit-list-heading"><h3>全部报告</h3><label class="checkup-toggle"><input type="checkbox" id="checkup-abnormal-only"> 只看偏高偏低</label></div><p class="field-hint">点某一项可以看它历次的变化。</p><div id="checkups-list"></div></section>
+<section class="card"><div class="visit-list-heading"><h3>全部报告</h3><label class="checkup-toggle"><input type="checkbox" id="checkup-abnormal-only"> 只看偏高偏低</label></div><p class="field-hint">点某一项可以看它历次的变化。</p><div id="checkups-list"></div><details id="checkups-deleted" hidden></details></section>
 <section class="card"><h3>和 AI 一起用</h3><p class="field-hint">把报告照片发给 AI，附上格式说明，让它整理好再粘贴导入。也可以把全部数据复制给 AI 帮你看趋势。</p><div class="record-actions"><button id="checkup-copy-guide">复制格式说明</button><button id="checkup-copy-all">复制全部体检数据</button></div></section>
 </section>
 <section class="card account-card" aria-labelledby="account-title">
@@ -140,11 +140,12 @@
 </dialog>
 <dialog id="checkup-import">
 <h2>粘贴导入体检报告</h2>
-<p class="field-hint">把 AI 整理好的内容整段粘贴进来，先点「检查」看对不对，再保存。</p>
+<p class="field-hint">把 AI 整理好的内容整段粘贴进来，点「检查」后会列出每一项，请对着纸质单逐项核对，再保存。</p>
 <label for="checkup-import-text" class="visually-hidden">导入内容</label><textarea id="checkup-import-text" rows="10" placeholder='{"checkups":[{"date":"…","items":[…]}]}'></textarea>
 <div id="checkup-import-preview" aria-live="polite"></div>
+<label id="checkup-import-confirm-row" class="checkup-confirm" hidden><input type="checkbox" id="checkup-import-confirm"> 我已对着纸质报告单逐项核对过，数值都对</label>
 <p id="checkup-import-status" role="status"></p>
-<div class="actions"><button type="button" id="checkup-import-cancel">取消</button><button type="button" id="checkup-import-check">检查</button><button type="button" class="primary" id="checkup-import-save" disabled>保存</button></div>
+<div class="actions"><button type="button" id="checkup-import-cancel">取消</button><button type="button" id="checkup-import-check">检查</button><button type="button" class="primary" id="checkup-import-save" disabled>核对无误，保存</button></div>
 </dialog>
 <dialog id="checkup-trend">
 <div class="visit-form-head"><h2 id="checkup-trend-title">变化</h2><button type="button" id="checkup-trend-close" aria-label="关闭">×</button></div>
